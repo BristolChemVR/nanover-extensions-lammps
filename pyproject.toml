@@ -1,6 +1,6 @@
 
 [project]
-name = "nanover_extensions_lammps"
+name = "nanover_extensions"
 version = "0.1.0"
 description = "LAMMPS engine interface for NanoVer"
 authors = [{ name = "Thomas Regan", email = "thomas.regan@bristol.ac.uk" }]
@@ -17,6 +17,9 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "nanover-server",
+    "lammps",
+    "numpy",
 ]
 
 [dependency-groups]
