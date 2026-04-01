@@ -8,11 +8,11 @@ import subprocess
 from glob import glob
 from pathlib import Path
 
+from typing import Annotated
+
 import typer
 
 from nanover.app.omni import OmniRunner
-
-from nanover_extensions.cli import app
 
 # ---------------------------------------------------------------------------
 # Windows DLL pre-loading
@@ -72,9 +72,13 @@ from nanover.websocket.record import record_from_runner
 # try:
 import nanover_extensions.lammps_.simulation
 from nanover_extensions.lammps_.simulation import LAMMPSSimulation
+
 # except Exception as e:
 #     print(f"Could not import LAMMPS module: {e}")
 #     LAMMPSSimulation = None
+
+
+app = typer.Typer()
 
 
 def _detect_mpi():
@@ -143,15 +147,49 @@ def _relaunch_with_mpi(launcher: str, n_procs: int) -> int:
         return 0
 
 
+def _list_to_str(s: str, seperator=",") -> list[str]:
+    """Takes a given input of `seperator` split list of files converts to a list of str."""
+    return s.split(seperator)
+
+
 @app.command()
 def lammps(
-    entries: list[str],
-    record_to_path: Path | None = None,
-    omp_num_threads: int = 4,
-    n_procs: int = 0,
-    quiet: bool = False,
+    entries: Annotated[
+        list[str],
+        typer.Option(
+            "-e",
+            "--entries",
+            help="Simulation(s) to run via LAMMPS (data file format)",
+            parser=_list_to_str,
+        ),
+    ],
+    record_to_path: Annotated[
+        Path | None,
+        typer.Option(
+            "-r", "--record-to-path", help="Record trajectory and state to files."
+        ),
+    ] = None,
+    omp_num_threads: Annotated[
+        int,
+        typer.Option(
+            "-nt",
+            "--omp-num-threads",
+            help="Set OMP_NUM_THREADS for OpenMP parallelism (default: 4).",
+        ),
+    ] = 4,
+    n_procs: Annotated[
+        int,
+        typer.Option(
+            "-np",
+            "--n-procs",
+            help="Number of MPI processes for LAMMPS simulations "
+            "(default: 4). "
+            "The server auto-launches with mpiexec/mpirun if not already "
+            "running under MPI. Requires mpi4py and mpiexec/mpirun in PATH.",
+        ),
+    ] = 0,
+    quiet: Annotated[bool, typer.Option(help="Whether to suppress LAMMPS outputs.")] = False,
 ):
-    entries = [entries]
     if omp_num_threads is not None:
         os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
 
@@ -264,7 +302,3 @@ def lammps(
             print(f"Recording to {out_path}")
 
             record_from_runner(runner, out_path)
-
-
-if __name__ == "__main__":
-    app()
