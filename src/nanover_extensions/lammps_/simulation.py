@@ -1,10 +1,10 @@
-from lammps import lammps
+import lammps
 from pathlib import Path
 import numpy as np
 import ctypes
 
-from nanover_extensions.lammps.converter import lammps_to_frame_data
-from nanover_extensions.lammps.imd import LammpsImdForceManager, detect_lammps_units, get_unit_conversions
+from nanover_extensions.lammps_.converter import lammps_to_frame_data
+from nanover_extensions.lammps_.imd import LammpsImdForceManager, detect_lammps_units, get_unit_conversions
 
 _ANGSTROM_TO_NM = 0.1
 
@@ -37,7 +37,7 @@ class LAMMPSSimulation:
         self._mpi_rank: int = mpi_comm.Get_rank() if mpi_comm is not None else 0
 
         cmdargs = ["-screen", "none"] if quiet else []
-        self.lmp = lammps(comm=mpi_comm, cmdargs=cmdargs) if mpi_comm is not None else lammps(cmdargs=cmdargs)
+        self.lmp = lammps.lammps(comm=mpi_comm, cmdargs=cmdargs) if mpi_comm is not None else lammps.lammps(cmdargs=cmdargs)
         self.lmp.file(self.input_script)
 
         # Detect or accept LAMMPS unit style (needed for IMD force conversion)
