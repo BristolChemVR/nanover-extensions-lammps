@@ -20,6 +20,7 @@ dependencies = [
     "nanover-server",
     "lammps",
     "numpy",
+    "typer",
 ]
 
 [dependency-groups]
