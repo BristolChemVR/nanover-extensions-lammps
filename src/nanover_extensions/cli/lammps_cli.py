@@ -8,11 +8,14 @@ import subprocess
 from glob import glob
 from pathlib import Path
 
-from typing import Annotated
+from typing import Optional
 
 import typer
+import click
 
 from nanover.app.omni import OmniRunner
+
+from nanover_extensions.cli.utils import OptionEatAll, MultiPath
 
 # ---------------------------------------------------------------------------
 # Windows DLL pre-loading
@@ -147,49 +150,52 @@ def _relaunch_with_mpi(launcher: str, n_procs: int) -> int:
         return 0
 
 
-def _list_to_str(s: str, seperator=",") -> list[str]:
-    """Takes a given input of `seperator` split list of files converts to a list of str."""
-    return s.split(seperator)
-
-
-@app.command()
+@click.command()
+@click.option(
+    "-e",
+    "--entries",
+    multiple=True,
+    type=MultiPath,
+    help="Simulation(s) to run via LAMMPS (data file format)",
+    cls=OptionEatAll,
+)
+@click.option(
+    "-r",
+    "--record-to-path",
+    type=Optional[Path],
+    help="Record trajectory and state to files.",
+)
+@click.option(
+    "-nt",
+    "--omp-num-threads",
+    type=int,
+    help="Set OMP_NUM_THREADS for OpenMP parallelism (default: 4).",
+    default=4,
+)
+@click.option(
+    "-np",
+    "--n-procs",
+    type=int,
+    help="Number of MPI processes for LAMMPS simulations "
+    "(default: 4). "
+    "The server auto-launches with mpiexec/mpirun if not already "
+    "running under MPI. Requires mpi4py and mpiexec/mpirun in PATH.",
+    default=0,
+)
+@click.option(
+    "-q",
+    "--quiet/-no-quiet",
+    is_flag=True,
+    help="Whether to suppress LAMMPS outputs.",
+    default=False,
+)
 def lammps(
-    entries: Annotated[
-        list[str],
-        typer.Option(
-            "-e",
-            "--entries",
-            help="Simulation(s) to run via LAMMPS (data file format)",
-            parser=_list_to_str,
-        ),
-    ],
-    record_to_path: Annotated[
-        Path | None,
-        typer.Option(
-            "-r", "--record-to-path", help="Record trajectory and state to files."
-        ),
-    ] = None,
-    omp_num_threads: Annotated[
-        int,
-        typer.Option(
-            "-nt",
-            "--omp-num-threads",
-            help="Set OMP_NUM_THREADS for OpenMP parallelism (default: 4).",
-        ),
-    ] = 4,
-    n_procs: Annotated[
-        int,
-        typer.Option(
-            "-np",
-            "--n-procs",
-            help="Number of MPI processes for LAMMPS simulations "
-            "(default: 4). "
-            "The server auto-launches with mpiexec/mpirun if not already "
-            "running under MPI. Requires mpi4py and mpiexec/mpirun in PATH.",
-        ),
-    ] = 0,
-    quiet: Annotated[bool, typer.Option(help="Whether to suppress LAMMPS outputs.")] = False,
-):
+    entries: list[list[Path]],
+    record_to_path: Path | None,
+    omp_num_threads: int,
+    n_procs: int,
+    quiet: bool,
+) -> None:
     if omp_num_threads is not None:
         os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
 

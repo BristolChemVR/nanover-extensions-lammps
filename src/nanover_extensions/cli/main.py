@@ -1,10 +1,15 @@
-import typer
+import click
 
-from nanover_extensions.cli.lammps_cli import app as lammps_app
+from nanover_extensions.cli.lammps_cli import lammps
 
-app = typer.Typer()
 
-app.add_typer(lammps_app)
+@click.group()
+def cli() -> None:
+    pass
+
+
+cli.add_command(lammps)
+
 
 if __name__ == "__main__":
-    app()
+    cli()
