@@ -95,4 +95,4 @@ MIT
 
 ## Contact
 
-Maintained by [BristolChemVR](https://github.com/{{cookiecutter.github_username}})
+Maintained by [BristolChemVR](https://github.com/BristolChemVR)
