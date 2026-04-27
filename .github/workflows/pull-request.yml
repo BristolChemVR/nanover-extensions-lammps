@@ -7,11 +7,10 @@ jobs:
   title-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: deepakputhraya/action-pr-title@master
+      - uses: naveenk1223/action-pr-title@master
         with:
           regex: "([a-z])+\/([a-z])+" # Regex the title should match.
           allowed_prefixes: "feature,fix,docs,style,refactor,perf,test,build,ci,revert,deps" # title should start with the given prefix
-          disallowed_prefix: "feat"
           prefix_case_sensitive: false # title prefix are case insensitive
           min_length: 5 # Min length of the title
           max_length: 120 # Max length of the title
