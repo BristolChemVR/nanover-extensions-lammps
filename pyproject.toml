@@ -1,9 +1,12 @@
 
 [project]
-name = "nanover_extensions"
+name = "nanover-extensions-lammps"
+import-namespace = ["nanover-extensions"]
+import-names = ["nanover_extensions.lammps"]
 version = "0.1.0"
 description = "LAMMPS engine interface for NanoVer"
 authors = [{ name = "Thomas Regan", email = "thomas.regan@bristol.ac.uk" }]
+maintainers = [{ name = "BristolChemVR", email = "chem-vr@bristol.ac.uk" }]
 readme = "README.md"
 license = {file = "LICENSE"}
 keywords = ["python"]
@@ -36,6 +39,9 @@ dev = [
     "pre-commit>=4.2.0",
 ]
 
+[project.scripts]
+next-lammps = "nanover_extensions.lammps.cli.main:main"
+
 [project.urls]
 homepage = "https://github.com/BristolChemVR/nanover-extensions-lammps"
 repository = "https://github.com/BristolChemVR/nanover-extensions-lammps.git"
@@ -45,6 +51,9 @@ issues = "https://github.com/BristolChemVR/nanover-extensions-lammps/issues"
 [build-system]
 requires = ["uv_build>=0.10.4,<0.11.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = ["nanover_extensions.lammps"]
 
 [tool.taskipy.tasks]
 format = { cmd = "ruff format ./src/", help = "Format code using ruff" }

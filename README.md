@@ -44,7 +44,7 @@ git push -u origin main
 We've included a bunch of useful CLI commands for common project tasks using [taskipy](https://github.com/taskipy/taskipy).
 
 ```
-# run src/nanover_extensions_lammps/nanover_extensions_lammps.py
+# run src/nanover_extensions/lammps/cli/lammps_cli.py
 task run
 
 # run all tests
@@ -95,4 +95,4 @@ MIT
 
 ## Contact
 
-Created by [Thomas Regan](https://github.com/BristolChemVR)
+Maintained by [BristolChemVR](https://github.com/BristolChemVR)

@@ -3,8 +3,8 @@ from pathlib import Path
 import numpy as np
 import ctypes
 
-from nanover_extensions.lammps_.converter import lammps_to_frame_data
-from nanover_extensions.lammps_.imd import LammpsImdForceManager, detect_lammps_units, get_unit_conversions
+from nanover_extensions.lammps.converter import lammps_to_frame_data
+from nanover_extensions.lammps.imd import LammpsImdForceManager, detect_lammps_units, get_unit_conversions
 
 _ANGSTROM_TO_NM = 0.1
 

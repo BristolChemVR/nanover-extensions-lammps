@@ -70,8 +70,8 @@ from nanover.omni import OmniRunner
 from nanover.websocket.record import record_from_runner
 
 # try:
-import nanover_extensions.lammps_.simulation
-from nanover_extensions.lammps_.simulation import LAMMPSSimulation
+import nanover_extensions.lammps.simulation
+from nanover_extensions.lammps.simulation import LAMMPSSimulation
 
 # except Exception as e:
 #     print(f"Could not import LAMMPS module: {e}")
