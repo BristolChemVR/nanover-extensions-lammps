@@ -20,7 +20,6 @@ class LAMMPSSimulation:
         frame_interval_steps=1,
         type_to_atomic_number: dict[int, int] | None = None,
         lammps_units: str | None = None,
-        mpi_comm=None,
         generate_bonds: bool = True,
         quiet: bool = False,
     ):
@@ -32,12 +31,8 @@ class LAMMPSSimulation:
         self.type_to_atomic_number = type_to_atomic_number or {}
         self.name = Path(input_script).stem
 
-        # MPI communicator and rank (None / 0 for single-process runs)
-        self._mpi_comm = mpi_comm
-        self._mpi_rank: int = mpi_comm.Get_rank() if mpi_comm is not None else 0
-
         cmdargs = ["-screen", "none"] if quiet else []
-        self.lmp = lammps.lammps(comm=mpi_comm, cmdargs=cmdargs) if mpi_comm is not None else lammps.lammps(cmdargs=cmdargs)
+        self.lmp = lammps.lammps(cmdargs=cmdargs)
         self.lmp.file(self.input_script)
 
         # Detect or accept LAMMPS unit style (needed for IMD force conversion)
@@ -69,25 +64,13 @@ class LAMMPSSimulation:
         return {int(aid): i for i, aid in enumerate(ids)}
 
     def reset(self, app_server=None):
-        """
-        Reset the simulation for (re)start.
-
-        In single-process runs call as ``reset(app_server)``.
-
-        In MPI runs this method must be called on **all** ranks simultaneously
-        because it issues collective LAMMPS commands (``fix``/``unfix``).
-        Pass ``app_server`` only on rank 0; worker ranks call ``reset()`` with
-        no arguments, then enter :meth:`run_mpi_worker`.
-        """
         if app_server is not None:
             self._app_server = app_server
 
-        # unfix is a collective LAMMPS command — all ranks must call it together
         if self._imd_force_manager is not None:
             self._imd_force_manager.unfix()
             self._imd_force_manager = None
 
-        # gather_atoms is allgather — all ranks participate and get the full data
         if self._id_to_index is None:
             self._id_to_index = self._build_id_to_index_map()
 
@@ -177,9 +160,6 @@ class LAMMPSSimulation:
 
         pbc_vectors = np.diag([(xhi - xlo) * _ANGSTROM_TO_NM, (yhi - ylo) * _ANGSTROM_TO_NM, (zhi - zlo) * _ANGSTROM_TO_NM])
 
-        # fix external is collective — all ranks register it simultaneously.
-        # On worker ranks imd_state is None; those ranks receive forces via
-        # broadcast_forces() rather than computing them.
         imd_state = self._app_server.imd if self._app_server is not None else None
         self._imd_force_manager = LammpsImdForceManager(
             lmp=self.lmp,
@@ -191,8 +171,7 @@ class LAMMPSSimulation:
         # New fix registered — next run must use pre yes to incorporate it.
         self._needs_pre = True
 
-        # Rank 0 only: reset frame stream and send initial topology frame
-        if self._mpi_rank == 0 and self._app_server is not None:
+        if self._app_server is not None:
             natoms = int(self.lmp.get_natoms())
             topology_frame = lammps_to_frame_data(
                 positions_angstrom=positions,
@@ -386,23 +365,13 @@ class LAMMPSSimulation:
         return orders, pairs
 
     def advance_to_next_frame(self):
-        # Collective LAMMPS command — all MPI ranks must call this together
         self.step(self.frame_interval)
         self._current_step += self.frame_interval
 
-        # gather_atoms is allgather — all ranks get the full position data
         positions, box_bounds = self._get_positions_and_box()
 
-        # Rank 0 computes IMD forces; all ranks then sync via broadcast
         if self._imd_force_manager is not None:
-            if self._mpi_rank == 0:
-                self._imd_force_manager.update_interactions(positions_nm=positions * _ANGSTROM_TO_NM)
-            if self._mpi_comm is not None:
-                self._imd_force_manager.broadcast_forces(self._mpi_comm, self._mpi_rank)
-
-        # Frame building and sending — rank 0 only
-        if self._mpi_rank != 0:
-            return
+            self._imd_force_manager.update_interactions(positions_nm=positions * _ANGSTROM_TO_NM)
 
         # Per-frame bond filter: suppress bonds longer than half the shortest box edge.
         # Positions are wrapped to [0, L), so a genuine bond is always short; any bond
@@ -432,27 +401,4 @@ class LAMMPSSimulation:
         if self._app_server is not None:
             self._app_server.frame_publisher.send_frame(frame)
 
-    def run_mpi_worker(self):
-        """
-        Block and run the simulation loop for MPI worker ranks (rank != 0).
-
-        Worker ranks must keep in lockstep with rank 0 because LAMMPS's
-        ``run`` command and ``gather_atoms`` are collective MPI operations.
-        This method drives that loop; rank 0 is driven by the NanoVer runner.
-
-        Call this only after :meth:`reset` (with no ``app_server`` argument)
-        on all non-zero ranks::
-
-            if rank == 0:
-                with NanoverImdApplication.basic_server(name="LAMMPS") as app:
-                    sim.reset(app)
-                    while True:
-                        sim.advance_by_one_step()
-            else:
-                sim.reset()
-                sim.run_mpi_worker()
-        """
-        assert self._mpi_rank != 0, "run_mpi_worker() must only be called on MPI ranks > 0"
-        while True:
-            self.advance_to_next_frame()
 

@@ -100,9 +100,6 @@ class LammpsImdForceManager:
             lammps_units = detect_lammps_units(lmp)
         _, self._force_from_kjmol_nm = get_unit_conversions(lammps_units)
 
-        # Pre-compute masses eagerly so _get_masses() is never called lazily
-        # during update_interactions() — that would invoke gather_atoms() from
-        # rank 0 only, causing an MPI collective deadlock on worker ranks.
         self._masses: np.ndarray = self._get_masses(len(id_to_index))
 
         # Cached forces applied by the callback each timestep, in LAMMPS units,
@@ -131,20 +128,6 @@ class LammpsImdForceManager:
     # Public interface
     # ------------------------------------------------------------------
 
-    def broadcast_forces(self, comm, my_rank: int) -> None:
-        natoms = len(self._id_to_index)
-        buf = np.zeros((natoms, 3), dtype=np.float64)
-        if my_rank == 0 and self._current_lammps_forces is not None:
-            buf[:] = self._current_lammps_forces
-        comm.Bcast(buf, root=0)
-        if my_rank != 0:
-            if np.any(buf != 0):
-                self._current_lammps_forces = buf
-                self._is_force_dirty = True
-            else:
-                self._current_lammps_forces = None
-                self._is_force_dirty = False
-
     def update_interactions(self, positions_nm: np.ndarray) -> None:
         """
         Compute IMD forces from the current frame's molecule-whole positions and
@@ -159,7 +142,7 @@ class LammpsImdForceManager:
             in NanoVer (0-based) index order.
         """
         if self.imd_state is None:
-            return  # worker rank — forces are received via broadcast_forces
+            return
 
         natoms = len(positions_nm)
         interactions = self.imd_state.active_interactions
@@ -244,8 +227,7 @@ class LammpsImdForceManager:
         Needed by :func:`~nanover.imd.imd_force.calculate_imd_force` for
         mass-weighted interactions.
 
-        Called eagerly from :meth:`__init__` (which runs on all MPI ranks
-        inside ``reset()``) so it is never invoked lazily from rank 0 only
+        Called eagerly from :meth:`__init__` so it is never invoked lazily
         during :meth:`update_interactions`.
         """
         try:
