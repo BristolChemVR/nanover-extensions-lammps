@@ -140,6 +140,12 @@ def lammps(
                     except Exception as e:
                         print(f"Error initializing LAMMPS simulation from {path}: {e}")
 
+        runner.print_basic_info()
+
+        # Start the first simulation if available
+        if runner.simulations:
+            runner.load(0)
+
         if record_to_path is not None:
             stem = record_to_path
             if stem == "":
@@ -149,4 +155,7 @@ def lammps(
             out_path = f"{stem}.nanover.zip"
             print(f"Recording to {out_path}")
 
-            record_from_runner(runner, out_path)
+            with record_from_runner(runner, out_path):
+                input("Press Enter to stop.\n")
+        else:
+            input("Press Enter to stop.\n")
