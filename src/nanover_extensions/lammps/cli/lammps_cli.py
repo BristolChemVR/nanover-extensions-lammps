@@ -10,50 +10,7 @@ import typer
 
 from nanover.app.omni import OmniRunner
 
-# ---------------------------------------------------------------------------
-# Windows DLL pre-loading
-#
-# LAMMPS (MSMPI build) is compiled with MinGW-GCC and ships its own copies of
-# libgomp-1.dll, libgcc_s_seh-1.dll, libstdc++-6.dll etc.  The conda
-# environment also contains different versions of these same DLLs (in
-# Library/bin).  If any other nanover dependency (e.g. OpenMM) loads the conda
-# versions first, liblammps.dll will fail to load with WinError 127 because
-# the already-resident DLL is the wrong version.
-#
-# Fix: register the LAMMPS bin and MS-MPI bin via os.add_dll_directory() and
-# pre-load the GCC runtime DLLs from the LAMMPS bin *before* importing OpenMM
-# or any other conda package that might pull in conflicting versions.
-# ---------------------------------------------------------------------------
 os.environ["OMP_NUM_THREADS"] = "4"
-
-
-# _lammps_dll_path = os.environ.get("LAMMPSDLLPATH") or os.environ.get("LAMMPSHOME")
-# if _lammps_dll_path:
-#     _lammps_bin = (
-#         _lammps_dll_path
-#         if os.path.isfile(os.path.join(_lammps_dll_path, "liblammps.dll"))
-#         else os.path.join(_lammps_dll_path, "bin")
-#     )
-#     if hasattr(os, "add_dll_directory") and os.path.isdir(_lammps_bin):
-#         os.add_dll_directory(_lammps_bin)
-#     # Pre-load GCC runtime DLLs from the LAMMPS bin so they take precedence
-#     # over any conda-env copies that OpenMM or numpy might otherwise load first.
-#     for _dll_name in (
-#         "libgomp-1.dll",
-#         "libgcc_s_seh-1.dll",
-#         "libstdc++-6.dll",
-#         "libwinpthread-1.dll",
-#     ):
-#         _dll_full = os.path.join(_lammps_bin, _dll_name)
-#         if os.path.isfile(_dll_full):
-#             try:
-#                 ctypes.CDLL(_dll_full)
-#             except OSError:
-#                 pass
-
-# _msmpi_bin = os.environ.get("MSMPI_BIN") or r"C:\Program Files\Microsoft MPI\Bin"
-# if hasattr(os, "add_dll_directory") and os.path.isdir(_msmpi_bin):
-#     os.add_dll_directory(_msmpi_bin)
 
 from nanover.omni import OmniRunner
 from nanover.websocket.record import record_from_runner
@@ -61,11 +18,6 @@ from nanover.websocket.record import record_from_runner
 # try:
 import nanover_extensions.lammps.simulation
 from nanover_extensions.lammps.simulation import LAMMPSSimulation
-
-# except Exception as e:
-#     print(f"Could not import LAMMPS module: {e}")
-#     LAMMPSSimulation = None
-
 
 app = typer.Typer()
 
