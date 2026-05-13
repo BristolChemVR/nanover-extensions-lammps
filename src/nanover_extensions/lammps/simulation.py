@@ -6,8 +6,6 @@ import ctypes
 from nanover_extensions.lammps.converter import lammps_to_frame_data
 from nanover_extensions.lammps.imd import LammpsImdForceManager, detect_lammps_units, get_unit_conversions
 
-_ANGSTROM_TO_NM = 0.1
-
 
 class LAMMPSSimulation:
     """LAMMPS simulation wrapper implementing the Simulation protocol."""
@@ -37,6 +35,14 @@ class LAMMPSSimulation:
 
         # Detect or accept LAMMPS unit style (needed for IMD force conversion)
         self.lammps_units: str = lammps_units or detect_lammps_units(self.lmp)
+
+        # Cache periodicity flags and position unit conversion factor once after
+        # the script is loaded — neither changes during a run.
+        xp = int(self.lmp.extract_global("xperiodic") or 0)
+        yp = int(self.lmp.extract_global("yperiodic") or 0)
+        zp = int(self.lmp.extract_global("zperiodic") or 0)
+        self._is_periodic = np.array([xp, yp, zp], dtype=bool)
+        self._pos_to_nm, _, _ = get_unit_conversions(self.lammps_units)
 
         self._app_server = None
         self._current_step = 0
@@ -93,7 +99,7 @@ class LAMMPSSimulation:
                     ).reshape((natoms, 3))
                     # Convert positions to Å regardless of LAMMPS unit style
                     # so that the bond-distance thresholds (which are in Å) are correct.
-                    pos_to_nm, _ = get_unit_conversions(self.lammps_units)
+                    pos_to_nm, _, _ = get_unit_conversions(self.lammps_units)
                     to_angstrom = pos_to_nm * 10.0
                     # Wrap raw positions into the primary periodic image before
                     # inference.  LAMMPS does not guarantee that gather_atoms("x")
@@ -158,7 +164,14 @@ class LAMMPSSimulation:
             self._bond_pairs = self._bond_pairs[_keep]
             self._bond_orders = self._bond_orders[_keep]
 
-        pbc_vectors = np.diag([(xhi - xlo) * _ANGSTROM_TO_NM, (yhi - ylo) * _ANGSTROM_TO_NM, (zhi - zlo) * _ANGSTROM_TO_NM])
+        if self._is_periodic.all():
+            pbc_vectors = np.diag([
+                (xhi - xlo) * self._pos_to_nm,
+                (yhi - ylo) * self._pos_to_nm,
+                (zhi - zlo) * self._pos_to_nm,
+            ])
+        else:
+            pbc_vectors = None
 
         imd_state = self._app_server.imd if self._app_server is not None else None
         self._imd_force_manager = LammpsImdForceManager(
@@ -173,9 +186,14 @@ class LAMMPSSimulation:
 
         if self._app_server is not None:
             natoms = int(self.lmp.get_natoms())
+            xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
             topology_frame = lammps_to_frame_data(
-                positions_angstrom=positions,
-                box_bounds_angstrom=box_bounds,
+                positions_nm=positions * self._pos_to_nm,
+                box_bounds_nm=(
+                    xlo * self._pos_to_nm, xhi * self._pos_to_nm,
+                    ylo * self._pos_to_nm, yhi * self._pos_to_nm,
+                    zlo * self._pos_to_nm, zhi * self._pos_to_nm,
+                ),
                 particle_count=natoms,
                 particle_elements=self._particle_elements,
                 bond_pairs=self._bond_pairs,
@@ -205,7 +223,11 @@ class LAMMPSSimulation:
 
         L = np.array([xhi - xlo, yhi - ylo, zhi - zlo], dtype=float)
         origin = np.array([xlo, ylo, zlo], dtype=float)
-        positions = (positions - origin) % L
+        shifted = positions - origin
+        if self._is_periodic.any():
+            positions = np.where(self._is_periodic, shifted % L, shifted)
+        else:
+            positions = shifted
 
         return positions, box_bounds
 
@@ -371,7 +393,7 @@ class LAMMPSSimulation:
         positions, box_bounds = self._get_positions_and_box()
 
         if self._imd_force_manager is not None:
-            self._imd_force_manager.update_interactions(positions_nm=positions * _ANGSTROM_TO_NM)
+            self._imd_force_manager.update_interactions(positions_nm=positions * self._pos_to_nm)
 
         # Per-frame bond filter: suppress bonds longer than half the shortest box edge.
         # Positions are wrapped to [0, L), so a genuine bond is always short; any bond
@@ -387,9 +409,14 @@ class LAMMPSSimulation:
             vis_pairs = self._bond_pairs[keep]
             vis_orders = self._bond_orders[keep]
 
+        xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
         frame = lammps_to_frame_data(
-            positions_angstrom=positions,
-            box_bounds_angstrom=box_bounds,
+            positions_nm=positions * self._pos_to_nm,
+            box_bounds_nm=(
+                xlo * self._pos_to_nm, xhi * self._pos_to_nm,
+                ylo * self._pos_to_nm, yhi * self._pos_to_nm,
+                zlo * self._pos_to_nm, zhi * self._pos_to_nm,
+            ),
             bond_pairs=vis_pairs,
             bond_orders=vis_orders,
             include_positions=True,

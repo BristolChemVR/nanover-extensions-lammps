@@ -97,6 +97,7 @@ def lammps(
         # Start the first simulation if available
         if runner.simulations:
             runner.load(0)
+            runner.print_basic_info()
 
         if record_to_path is not None:
             stem = record_to_path

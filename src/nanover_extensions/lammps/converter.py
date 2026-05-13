@@ -1,8 +1,6 @@
 import numpy as np
 from nanover.trajectory import FrameData
 
-_ANGSTROM_TO_NM = 0.1
-
 # Topology frame to be sent once
 def add_lammps_topology_to_frame_data(
         data: FrameData,
@@ -36,25 +34,24 @@ def add_lammps_topology_to_frame_data(
 def add_lammps_data_to_frame_data(
         data: FrameData,
         *,
-        positions_angstrom: np.ndarray | None = None,
-        box_bounds_angstrom: tuple[float, float, float, float, float, float] | None = None,
+        positions_nm: np.ndarray | None = None,
+        box_bounds_nm: tuple[float, float, float, float, float, float] | None = None,
         include_positions: bool = True,
     ) -> None:
 
-    # Positions
-    if include_positions and positions_angstrom is not None:
-        positions_nm = np.asarray(positions_angstrom, dtype=float) * _ANGSTROM_TO_NM
-        data.particle_positions = positions_nm.astype(np.float32, copy=False)
+    # Positions (already in nm)
+    if include_positions and positions_nm is not None:
+        data.particle_positions = np.asarray(positions_nm, dtype=np.float32)
 
-    # Box vectors (orthorhombic)
-    if box_bounds_angstrom is not None:
-        arr = np.asarray(box_bounds_angstrom, dtype=float).flatten()
+    # Box vectors (orthorhombic, already in nm)
+    if box_bounds_nm is not None:
+        arr = np.asarray(box_bounds_nm, dtype=float).flatten()
 
         xlo, xhi, ylo, yhi, zlo, zhi = arr[:6]
 
-        lx = (xhi - xlo) * _ANGSTROM_TO_NM
-        ly = (yhi - ylo) * _ANGSTROM_TO_NM
-        lz = (zhi - zlo) * _ANGSTROM_TO_NM
+        lx = xhi - xlo
+        ly = yhi - ylo
+        lz = zhi - zlo
 
         data.box_vectors = np.array(
             [[lx, 0.0, 0.0],
@@ -65,8 +62,8 @@ def add_lammps_data_to_frame_data(
 
 def lammps_to_frame_data(
         *,
-        positions_angstrom: np.ndarray | None = None,
-        box_bounds_angstrom: tuple[float, float, float, float, float, float] | None = None,
+        positions_nm: np.ndarray | None = None,
+        box_bounds_nm: tuple[float, float, float, float, float, float] | None = None,
         particle_count: int | None = None,
         particle_elements: np.ndarray | None = None,
         bond_orders: np.ndarray | None = None,
@@ -78,8 +75,8 @@ def lammps_to_frame_data(
 
     add_lammps_data_to_frame_data(
         data,
-        positions_angstrom=positions_angstrom,
-        box_bounds_angstrom=box_bounds_angstrom,
+        positions_nm=positions_nm,
+        box_bounds_nm=box_bounds_nm,
         include_positions=include_positions,
     )
 
