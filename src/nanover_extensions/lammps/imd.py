@@ -14,28 +14,31 @@ from nanover.imd import ImdStateWrapper
 from nanover.trajectory import FrameData
 
 # Conversion factors per LAMMPS unit style.
-# Each entry is (pos_to_nm, force_from_kjmol_per_nm):
+# Each entry is (pos_to_nm, force_from_kjmol_per_nm, mass_to_amu):
 #   pos_to_nm               : multiply LAMMPS positions by this to get nm
 #   force_from_kjmol_per_nm : multiply kJ/(mol·nm) forces by this to get LAMMPS force units
-_UNIT_CONVERSIONS: dict[str, tuple[float, float]] = {
-    # real  : positions Å, forces kcal/(mol·Å)
+#   mass_to_amu             : multiply LAMMPS masses by this to get atomic mass units
+_UNIT_CONVERSIONS: dict[str, tuple[float, float, float]] = {
+    # real  : positions Å, forces kcal/(mol·Å), masses g/mol (= amu)
     #   1 kJ/(mol·nm) = 0.1 kJ/(mol·Å) = 0.023901 kcal/(mol·Å)
-    "real":   (0.1, 0.023901),
-    # metal : positions Å, forces eV/Å
+    "real":   (0.1,  0.023901,    1.0),
+    # metal : positions Å, forces eV/Å, masses g/mol (= amu)
     #   1 kJ/(mol·nm) = 1/(96.485 * 10) eV/Å ≈ 1.03643e-3 eV/Å
-    "metal":  (0.1, 1.03643e-3),
-    # si    : positions m, forces N (per atom)
+    "metal":  (0.1,  1.03643e-3,  1.0),
+    # si    : positions m, forces N (per atom), masses kg
     #   1 kJ/(mol·nm) = 1e3/(6.02214076e23 * 1e-9) N ≈ 1.66054e-12 N
-    "si":     (1e9, 1.66054e-12),
-    # nano  : positions nm (already), forces attogram·nm/ns²
+    #   1 kg = 1/(1.66054e-27) amu ≈ 6.02214076e26 amu
+    "si":     (1e9,  1.66054e-12, 6.02214076e26),
+    # nano  : positions nm (already), forces ag·nm/ns², masses ag
     #   1 kJ/(mol·nm) ≈ 0.069477 ag·nm/ns²
-    "nano":   (1.0, 0.069477),
+    #   1 ag = 1e-18 g / (1.66054e-24 g/amu) ≈ 6.02214076e5 amu
+    "nano":   (1.0,  0.069477,    6.02214076e5),
 }
 
 
-def get_unit_conversions(lammps_units: str) -> tuple[float, float]:
+def get_unit_conversions(lammps_units: str) -> tuple[float, float, float]:
     """
-    Return ``(pos_to_nm, force_from_kjmol_per_nm)`` for the given LAMMPS unit style.
+    Return ``(pos_to_nm, force_from_kjmol_per_nm, mass_to_amu)`` for the given LAMMPS unit style.
 
     :param lammps_units: LAMMPS unit style string (e.g. ``"real"``, ``"metal"``).
     :raises ValueError: If the unit style is not supported.
@@ -98,7 +101,7 @@ class LammpsImdForceManager:
 
         if lammps_units is None:
             lammps_units = detect_lammps_units(lmp)
-        _, self._force_from_kjmol_nm = get_unit_conversions(lammps_units)
+        _, self._force_from_kjmol_nm, self._mass_to_amu = get_unit_conversions(lammps_units)
 
         self._masses: np.ndarray = self._get_masses(len(id_to_index))
 
@@ -205,11 +208,10 @@ class LammpsImdForceManager:
         - *fexternal*: 2-D float array to accumulate forces into, shape ``(nlocal, 3)``
         """
         if self._current_lammps_forces is None:
-            # No active interactions; zero fexternal once after forces were cleared,
-            # then clear the flag so we don't zero it every timestep unnecessarily.
-            if self._is_force_dirty:
-                fexternal[:] = 0.0
-                self._is_force_dirty = False
+            # No active interactions. Always zero fexternal — the array may have
+            # been re-grown by LAMMPS (atom migration) leaving new entries uninitialised.
+            fexternal[:] = 0.0
+            self._is_force_dirty = False
             return
 
         # Map local atom IDs to NanoVer indices and scatter cached forces
@@ -239,7 +241,7 @@ class LammpsImdForceManager:
                     ctypes.cast(mass_ptr, ctypes.POINTER(ctypes.c_double)),
                     shape=(ntypes + 1,),
                 )
-                return np.array([float(masses_by_type[int(t)]) for t in lmp_types])
+                return np.array([float(masses_by_type[int(t)]) for t in lmp_types]) * self._mass_to_amu
         except Exception:
             pass
 
@@ -251,7 +253,7 @@ class LammpsImdForceManager:
                     ctypes.cast(rmass_ptr, ctypes.POINTER(ctypes.c_double)),
                     shape=(natoms,),
                 )
-                return rmass.copy()
+                return rmass.copy() * self._mass_to_amu
         except Exception:
             pass
 
