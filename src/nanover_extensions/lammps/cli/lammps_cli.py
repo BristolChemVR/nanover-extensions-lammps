@@ -8,15 +8,11 @@ from typing import Annotated
 
 import typer
 
-from nanover.app.omni import OmniRunner
-
 os.environ["OMP_NUM_THREADS"] = "4"
 
 from nanover.omni import OmniRunner
 from nanover.websocket.record import record_from_runner
 
-# try:
-import nanover_extensions.lammps.simulation
 from nanover_extensions.lammps.simulation import LAMMPSSimulation
 
 app = typer.Typer()
@@ -59,11 +55,6 @@ def lammps(
 
     with OmniRunner.with_basic_server() as runner:
         for entry in entries:
-            if LAMMPSSimulation is None:
-                print(
-                    "Skipping --lammps entry: LAMMPS module failed to import (see error above)."
-                )
-                continue
             # Entry is a list of tokens from nargs="+".
             # Optional trailing integer is the frame interval: --lammps sim.in 20
             *path_tokens, last = entry

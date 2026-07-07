@@ -3,8 +3,6 @@ Manage NanoVer IMD force injection into a LAMMPS simulation via fix external.
 """
 
 import ctypes
-import itertools
-from typing import Set
 
 import numpy as np
 import numpy.typing as npt
@@ -69,12 +67,6 @@ def detect_lammps_units(lmp) -> str:
     except Exception:
         pass
     return "real"
-
-
-def _build_particle_interaction_index_set(interactions: dict) -> Set[int]:
-    """Return the set of 0-based particle indices covered by *interactions*."""
-    indices = (interaction.particles for interaction in interactions.values())
-    return set(map(int, itertools.chain(*indices)))
 
 
 class LammpsImdForceManager:
