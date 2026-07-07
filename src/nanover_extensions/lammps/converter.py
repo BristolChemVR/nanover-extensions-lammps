@@ -1,7 +1,7 @@
 import numpy as np
 from nanover.trajectory import FrameData
 
-# Topology frame to be sent once
+
 def add_lammps_topology_to_frame_data(
         data: FrameData,
         *,
@@ -10,17 +10,15 @@ def add_lammps_topology_to_frame_data(
         bond_pairs: np.ndarray | None = None,
         bond_orders: np.ndarray | None = None,
     ) -> None:
+    """Sent once, when the topology is established or changes."""
 
-    # Particle count
     if particle_count is not None:
         data.particle_count = int(particle_count)
 
-    # Particle elements
     if particle_elements is not None:
         elems = np.asarray(particle_elements).reshape((-1,))
         data.particle_elements = elems.astype(np.uint8, copy=False)
 
-    # Bonds
     if bond_pairs is not None:
         pairs = np.asarray(bond_pairs)
         pairs = pairs.reshape((-1, 2))
@@ -30,7 +28,7 @@ def add_lammps_topology_to_frame_data(
         orders = np.asarray(bond_orders).reshape((-1,))
         data.bond_orders = orders.astype(np.uint32, copy=False)
 
-# Data to be sent each frame
+
 def add_lammps_data_to_frame_data(
         data: FrameData,
         *,
@@ -38,12 +36,11 @@ def add_lammps_data_to_frame_data(
         box_bounds_nm: tuple[float, float, float, float, float, float] | None = None,
         include_positions: bool = True,
     ) -> None:
+    """Sent every frame."""
 
-    # Positions (already in nm)
     if include_positions and positions_nm is not None:
         data.particle_positions = np.asarray(positions_nm, dtype=np.float32)
 
-    # Box vectors (orthorhombic, already in nm)
     if box_bounds_nm is not None:
         arr = np.asarray(box_bounds_nm, dtype=float).flatten()
 

@@ -35,12 +35,7 @@ _UNIT_CONVERSIONS: dict[str, tuple[float, float, float]] = {
 
 
 def get_unit_conversions(lammps_units: str) -> tuple[float, float, float]:
-    """
-    Return ``(pos_to_nm, force_from_kjmol_per_nm, mass_to_amu)`` for the given LAMMPS unit style.
-
-    :param lammps_units: LAMMPS unit style string (e.g. ``"real"``, ``"metal"``).
-    :raises ValueError: If the unit style is not supported.
-    """
+    """Return (pos_to_nm, force_from_kjmol_per_nm, mass_to_amu) for a LAMMPS unit style."""
     try:
         return _UNIT_CONVERSIONS[lammps_units]
     except KeyError:
@@ -51,13 +46,7 @@ def get_unit_conversions(lammps_units: str) -> tuple[float, float, float]:
 
 
 def detect_lammps_units(lmp) -> str:
-    """
-    Attempt to detect the LAMMPS unit style from the simulation object.
-    Falls back to ``"real"`` if detection fails.
-
-    :param lmp: A :class:`lammps.lammps` instance.
-    :return: LAMMPS unit style string.
-    """
+    """Detect the LAMMPS unit style, falling back to "real" if detection fails."""
     try:
         units = lmp.extract_global("units")
         if isinstance(units, (bytes, bytearray)):
@@ -84,7 +73,6 @@ class LammpsImdForceManager:
         self.imd_state = imd_state
         self._id_to_index = id_to_index  # LAMMPS atom ID → NanoVer 0-based index
 
-        # Precomputed array for O(1) vectorised ID→index lookup in _callback.
         # _id_lookup[lammps_id] = nanover_index, or -1 if not present.
         max_id = max(id_to_index.keys(), default=0)
         self._id_lookup = np.full(max_id + 1, -1, dtype=np.int64)
@@ -97,8 +85,7 @@ class LammpsImdForceManager:
 
         self._masses: np.ndarray = self._get_masses(len(id_to_index))
 
-        # Cached forces applied by the callback each timestep, in LAMMPS units,
-        # NanoVer (0-based) index order, shape (natoms, 3).
+        # Forces applied by the callback each timestep, LAMMPS units, NanoVer index order.
         self._current_lammps_forces: np.ndarray | None = None
 
         # Forces in NanoVer units (kJ/mol/nm) for frame broadcasting.
@@ -119,22 +106,11 @@ class LammpsImdForceManager:
         lmp.command(f"fix {self.FIX_ID} all external pf/callback 1 1")
         lmp.set_fix_external_callback(self.FIX_ID, self._callback)
 
-    # ------------------------------------------------------------------
-    # Public interface
-    # ------------------------------------------------------------------
-
     def update_interactions(self, positions_nm: np.ndarray) -> None:
-        """
-        Compute IMD forces from the current frame's molecule-whole positions and
-        cache them for injection by :meth:`_callback`.
+        """Compute IMD forces from this frame's positions and cache them for _callback.
 
-        Call this once per frame **after** obtaining the molecule-whole positions
-        that will be (or were just) broadcast to clients.  Using the same
-        positions ensures that the VR client and the simulation agree on where
-        atoms are, so dragging gestures produce forces in the correct direction.
-
-        :param positions_nm: Per-atom positions in nm, shape ``(natoms, 3)``,
-            in NanoVer (0-based) index order.
+        Call once per frame using the same positions broadcast to clients, so
+        dragging gestures pull in the direction the client actually sees.
         """
         if self.imd_state is None:
             return
@@ -145,8 +121,7 @@ class LammpsImdForceManager:
         if not interactions:
             if self._is_force_dirty:
                 self._current_lammps_forces = None
-                # Leave _is_force_dirty = True so the callback zeros fexternal
-                # on the next timestep before clearing the flag itself.
+                # _is_force_dirty stays True so _callback zeros fexternal once more
                 self.user_forces = np.zeros((natoms, 3), dtype=np.float32)
                 self.total_user_energy = 0.0
             return
@@ -180,28 +155,10 @@ class LammpsImdForceManager:
         except Exception:
             pass  # LAMMPS may have already removed the fix; safe to ignore
 
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
-
     def _callback(self, lmp, ntimestep, nlocal, tag, x, fexternal) -> None:
-        """
-        Called by LAMMPS every timestep via ``fix external pf/callback``.
-
-        Applies the forces cached by :meth:`update_interactions` (computed from
-        molecule-whole nm positions that match what the client sees) into
-        *fexternal* (LAMMPS units, local-atom order).
-
-        Parameters follow the LAMMPS Python fix-external callback signature:
-        - *nlocal*: number of local atoms (== natoms for single-process LAMMPS)
-        - *tag*: 1-D int array of global LAMMPS atom IDs, shape ``(nlocal,)``
-        - *x*: 2-D float array of positions, shape ``(nlocal, 3)`` — **not used**
-          here; force computation uses molecule-whole positions from the frame loop
-        - *fexternal*: 2-D float array to accumulate forces into, shape ``(nlocal, 3)``
-        """
+        """LAMMPS fix-external callback: scatter cached forces into fexternal each timestep."""
         if self._current_lammps_forces is None:
-            # No active interactions. Always zero fexternal — the array may have
-            # been re-grown by LAMMPS (atom migration) leaving new entries uninitialised.
+            # zero fexternal even with no interactions — atom migration can regrow it uninitialised
             fexternal[:] = 0.0
             self._is_force_dirty = False
             return
@@ -215,15 +172,7 @@ class LammpsImdForceManager:
         fexternal[valid] = self._current_lammps_forces[nanover_indices[valid]]
 
     def _get_masses(self, natoms: int) -> np.ndarray:
-        """
-        Return per-atom masses in a.m.u., in NanoVer (0-based) atom order.
-
-        Needed by :func:`~nanover.imd.imd_force.calculate_imd_force` for
-        mass-weighted interactions.
-
-        Called eagerly from :meth:`__init__` so it is never invoked lazily
-        during :meth:`update_interactions`.
-        """
+        """Return per-atom masses in a.m.u., NanoVer atom order."""
         try:
             lmp_types = np.asarray(self.lmp.gather_atoms("type", 0, 1), dtype=np.int32)
             ntypes = int(lmp_types.max(initial=0))

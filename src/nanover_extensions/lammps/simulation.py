@@ -101,33 +101,21 @@ class LAMMPSSimulation:
                     # so that the bond-distance thresholds (which are in Å) are correct.
                     pos_to_nm, _, _ = get_unit_conversions(self.lammps_units)
                     to_angstrom = pos_to_nm * 10.0
-                    # Wrap raw positions into the primary periodic image before
-                    # inference.  LAMMPS does not guarantee that gather_atoms("x")
-                    # returns positions in [xlo, xhi); atoms that crossed a periodic
-                    # boundary between remap operations may be stored slightly outside
-                    # the box.  Without wrapping, such an atom at x ≈ xlo-ε could be
-                    # inferred as bonded to a neighbour at x ≈ xlo+bond_length (their
-                    # Cartesian distance is within the covalent-radius threshold), yet
-                    # after rendering the first atom wraps to x ≈ xhi-ε, making the
-                    # bond appear to span the entire simulation cell.
+                    # wrap into the primary cell first — gather_atoms("x") isn't
+                    # guaranteed to be in [xlo, xhi), which would break bond inference
                     _box = self.lmp.extract_box()
                     _lo = np.array([float(_box[0][0]), float(_box[0][1]), float(_box[0][2])], dtype=float)
                     _L  = np.array([float(_box[1][0]) - float(_box[0][0]),
                                     float(_box[1][1]) - float(_box[0][1]),
                                     float(_box[1][2]) - float(_box[0][2])], dtype=float)
                     raw_pos = (raw_pos - _lo) % _L + _lo
-                    # Do NOT pass box_lengths: bonds that straddle a periodic boundary
-                    # are real but would be rendered by NanoVer as lines spanning the
-                    # entire simulation cell.  Omitting PBC means only bonds between
-                    # atoms that are physically close in their wrapped positions are
-                    # included; a small number of bonds at the box edges will be absent,
-                    # which looks far better than diagonal lines crossing the whole box.
+                    # box_lengths=None: a PBC-straddling bond would render as a line
+                    # across the whole cell, so we'd rather miss a few edge bonds
                     extra_orders, extra_pairs = self._generate_bonds_from_positions(
                         raw_pos * to_angstrom, self._particle_elements, box_lengths=None
                     )
                     if len(extra_pairs) > 0:
-                        # Keep only inferred bonds that involve at least one atom
-                        # that had no explicit LAMMPS bond, then merge.
+                        # only keep inferred bonds touching a previously-unbonded atom
                         unbonded = np.array(
                             sorted(set(range(natoms)) - bonded_atoms), dtype=np.int32
                         )
@@ -155,9 +143,7 @@ class LAMMPSSimulation:
         xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
         min_half_L = min(xhi - xlo, yhi - ylo, zhi - zlo) * 0.5
 
-        # Filter bonds: discard any longer than half the shortest box edge.
-        # Positions are wrapped to [0, L), so genuine bonds are always short;
-        # only PBC-spanning artefacts are long.
+        # drop bonds longer than half the shortest box edge — these are PBC artefacts
         if self._bond_pairs is not None and len(self._bond_pairs) > 0:
             _delta = positions[self._bond_pairs[:, 0]] - positions[self._bond_pairs[:, 1]]
             _keep = np.linalg.norm(_delta, axis=1) < min_half_L
@@ -232,15 +218,11 @@ class LAMMPSSimulation:
         return positions, box_bounds
 
     def _build_particle_elements(self) -> np.ndarray:
-        """
-        Build NanoVer/OpenMM-style particle_elements (atomic numbers, uint8)
-        from LAMMPS per-atom 'type'.
-        """
+        """Map LAMMPS per-atom type to atomic number (uint8), via explicit overrides or mass."""
         natoms = int(self.lmp.get_natoms())
         lmp_types = np.asarray(self.lmp.gather_atoms("type", 0, 1), dtype=np.int32).reshape((natoms,))
 
-        # Build a small reference mass table (amu). Extend as needed.
-        # (atomic_number, atomic_weight)
+        # (atomic_number, atomic_weight) reference table, extend as needed
         mass_table: list[tuple[int, float]] = [
             (1, 1.00794),    # H
             (6, 12.0107),    # C
@@ -279,8 +261,7 @@ class LAMMPSSimulation:
         # Infer number of types from observed types (safe across LAMMPS builds)
         ntypes = int(lmp_types.max(initial=0))
     
-        # Try to extract per-type masses from LAMMPS.
-        # LAMMPS uses 1-based indexing for per-type arrays (mass[1..ntypes]).
+        # LAMMPS per-type arrays are 1-based (mass[1..ntypes])
         masses = None
         try:
             mass_ptr = self.lmp.extract_atom("mass", 2)  # pointer to double array
@@ -302,7 +283,6 @@ class LAMMPSSimulation:
                 if z is not None:
                     self.type_to_atomic_number[int(t)] = int(z)
     
-        # Build per-atom elements array
         out = np.empty(natoms, dtype=np.uint8)
         for i, t in enumerate(lmp_types):
             z = self.type_to_atomic_number.get(int(t))
@@ -334,28 +314,8 @@ class LAMMPSSimulation:
         elements: np.ndarray,
         box_lengths: np.ndarray | None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Infer bonds from pairwise distances using covalent radii.
-
-        A bond is placed between atoms i and j when their minimum-image distance
-        is less than ``1.15 * (cov_radius_i + cov_radius_j)``.  Using single-bond
-        covalent radii (Alvarez, Dalton Trans. 2008, 2832) keeps the threshold
-        tight enough to distinguish bonded neighbours from non-bonded contacts
-        (e.g. Si–O bond at 1.61 Å vs. next Si–Si at 3.07 Å in a zeolite).
-
-        Called as a fallback from :meth:`reset` when LAMMPS reports no explicit
-        bonds (e.g. pair-potential-only simulations such as zeolites).
-
-        :param positions: Per-atom positions **in Å**, shape ``(natoms, 3)``.
-        :param elements: Per-atom atomic numbers, shape ``(natoms,)``.
-        :param box_lengths: Orthorhombic box edge lengths **in Å** for PBC
-            minimum-image, or ``None`` for non-periodic simulations.
-        :returns: ``(bond_orders, bond_pairs)`` matching :meth:`extract_bonds`.
-        """
-        # Atomic-number → single-bond covalent radius (Å).
-        # Source: Alvarez, Dalton Trans. 2008, 2832.
-        # Bond detected when distance < 1.15 * (r1 + r2).
-        # Example thresholds: Si–O 2.04 Å (bond 1.61), Si–Si 2.55 Å (next-nbr 3.07).
+        """Infer bonds when distance < 1.15 * (covalent radius sum). Positions in Å."""
+        # radii from Alvarez, Dalton Trans. 2008, 2832 (single-bond covalent radii)
         _RADII_BY_Z: dict[int, float] = {
             1: 0.31, 6: 0.76, 7: 0.71, 8: 0.66, 9: 0.57,
             11: 1.66, 12: 1.41, 13: 1.21, 14: 1.11,
@@ -395,10 +355,7 @@ class LAMMPSSimulation:
         if self._imd_force_manager is not None:
             self._imd_force_manager.update_interactions(positions_nm=positions * self._pos_to_nm)
 
-        # Per-frame bond filter: suppress bonds longer than half the shortest box edge.
-        # Positions are wrapped to [0, L), so a genuine bond is always short; any bond
-        # whose endpoints are > L/2 apart is a PBC artefact from an atom that crossed
-        # the boundary since the last frame.
+        # drop bonds longer than half the shortest box edge — these are PBC artefacts
         xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
         min_half_L = min(xhi - xlo, yhi - ylo, zhi - zlo) * 0.5
         vis_pairs = self._bond_pairs
