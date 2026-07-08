@@ -69,6 +69,17 @@ class LAMMPSSimulation:
         ids = np.asarray(self.lmp.gather_atoms("id", 0, 1), dtype=np.int64)
         return {int(aid): i for i, aid in enumerate(ids)}
 
+    @staticmethod
+    def _filter_pbc_bonds(positions, box_bounds, bond_pairs, bond_orders):
+        """Drop bonds longer than half the shortest box edge — these are PBC artefacts."""
+        if bond_pairs is None or len(bond_pairs) == 0:
+            return bond_pairs, bond_orders
+        xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
+        min_half_L = min(xhi - xlo, yhi - ylo, zhi - zlo) * 0.5
+        delta = positions[bond_pairs[:, 0]] - positions[bond_pairs[:, 1]]
+        keep = np.linalg.norm(delta, axis=1) < min_half_L
+        return bond_pairs[keep], bond_orders[keep]
+
     def reset(self, app_server=None):
         if app_server is not None:
             self._app_server = app_server
@@ -141,14 +152,10 @@ class LAMMPSSimulation:
 
         positions, box_bounds = self._get_positions_and_box()
         xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
-        min_half_L = min(xhi - xlo, yhi - ylo, zhi - zlo) * 0.5
 
-        # drop bonds longer than half the shortest box edge — these are PBC artefacts
-        if self._bond_pairs is not None and len(self._bond_pairs) > 0:
-            _delta = positions[self._bond_pairs[:, 0]] - positions[self._bond_pairs[:, 1]]
-            _keep = np.linalg.norm(_delta, axis=1) < min_half_L
-            self._bond_pairs = self._bond_pairs[_keep]
-            self._bond_orders = self._bond_orders[_keep]
+        self._bond_pairs, self._bond_orders = self._filter_pbc_bonds(
+            positions, box_bounds, self._bond_pairs, self._bond_orders
+        )
 
         if self._is_periodic.all():
             pbc_vectors = np.diag([
@@ -355,16 +362,9 @@ class LAMMPSSimulation:
         if self._imd_force_manager is not None:
             self._imd_force_manager.update_interactions(positions_nm=positions * self._pos_to_nm)
 
-        # drop bonds longer than half the shortest box edge — these are PBC artefacts
-        xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
-        min_half_L = min(xhi - xlo, yhi - ylo, zhi - zlo) * 0.5
-        vis_pairs = self._bond_pairs
-        vis_orders = self._bond_orders
-        if self._bond_pairs is not None and len(self._bond_pairs) > 0:
-            delta = positions[self._bond_pairs[:, 0]] - positions[self._bond_pairs[:, 1]]
-            keep = np.linalg.norm(delta, axis=1) < min_half_L
-            vis_pairs = self._bond_pairs[keep]
-            vis_orders = self._bond_orders[keep]
+        vis_pairs, vis_orders = self._filter_pbc_bonds(
+            positions, box_bounds, self._bond_pairs, self._bond_orders
+        )
 
         xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
         frame = lammps_to_frame_data(
