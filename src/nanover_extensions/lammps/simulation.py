@@ -2,6 +2,7 @@ import lammps
 from pathlib import Path
 import numpy as np
 import ctypes
+import warnings
 
 from nanover_extensions.lammps.converter import lammps_to_frame_data
 from nanover_extensions.lammps.imd import LammpsImdForceManager, detect_lammps_units, get_unit_conversions
@@ -277,7 +278,8 @@ class LAMMPSSimulation:
                     ctypes.cast(mass_ptr, ctypes.POINTER(ctypes.c_double)),
                     shape=(ntypes + 1,),
                 )
-        except Exception:
+        except Exception as e:
+            warnings.warn(f"Could not read per-type masses; elements inferred from mass will be missing: {e}")
             masses = None
     
         # Fill in any missing type->Z mapping using masses.

@@ -3,6 +3,7 @@ Manage NanoVer IMD force injection into a LAMMPS simulation via fix external.
 """
 
 import ctypes
+import warnings
 
 import numpy as np
 import numpy.typing as npt
@@ -51,10 +52,14 @@ def detect_lammps_units(lmp) -> str:
         units = lmp.extract_global("units")
         if isinstance(units, (bytes, bytearray)):
             units = units.decode()
-        if isinstance(units, str) and units in _UNIT_CONVERSIONS:
-            return units
-    except Exception:
-        pass
+    except Exception as e:
+        warnings.warn(f"Could not detect LAMMPS unit style, assuming 'real': {e}")
+        return "real"
+
+    if isinstance(units, str) and units in _UNIT_CONVERSIONS:
+        return units
+
+    warnings.warn(f"Unsupported or undetected LAMMPS unit style {units!r}, assuming 'real'.")
     return "real"
 
 
@@ -183,10 +188,10 @@ class LammpsImdForceManager:
                     shape=(ntypes + 1,),
                 )
                 return np.array([float(masses_by_type[int(t)]) for t in lmp_types]) * self._mass_to_amu
-        except Exception:
-            pass
+        except Exception as e:
+            warnings.warn(f"Could not read per-type masses, trying per-atom rmass: {e}")
 
-        # Fallback: per-atom mass (e.g. sphere/granular atom styles use rmass)
+        # per-atom mass, e.g. sphere/granular atom styles use rmass instead of per-type mass
         try:
             rmass_ptr = self.lmp.extract_atom("rmass", 2)
             if rmass_ptr is not None:
@@ -195,8 +200,11 @@ class LammpsImdForceManager:
                     shape=(natoms,),
                 )
                 return rmass.copy() * self._mass_to_amu
-        except Exception:
-            pass
+        except Exception as e:
+            warnings.warn(f"Could not read per-atom rmass: {e}")
 
-        # Final fallback: unit masses (non-mass-weighted interactions still work)
+        warnings.warn(
+            "Could not determine atom masses; using unit masses. "
+            "Mass-weighted IMD interactions will be inaccurate."
+        )
         return np.ones(natoms, dtype=np.float64)
