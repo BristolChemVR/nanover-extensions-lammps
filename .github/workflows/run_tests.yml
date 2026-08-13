@@ -49,7 +49,7 @@ jobs:
 
       - name: Ensure consistent formatting
         run: |
-          task format
+          ruff format --check ./src/
 
       - name: Linting and type checking
         run: |
