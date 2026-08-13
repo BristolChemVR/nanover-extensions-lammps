@@ -9,25 +9,15 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: check-json
+        exclude: ^\.vscode/
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: "v0.15.6"
     hooks:
       - id: ruff-check
-        args: [--fix --config=pyproject.toml]
+        args: [--fix]
       - id: ruff-format
         args: [--config=pyproject.toml]
-
-  - repo: https://github.com/psf/black
-    rev: 22.10.0
-    hooks:
-    -   id: black
-
-  - repo: https://github.com/pycqa/isort
-    rev: 5.11.2
-    hooks:
-      - id: isort
-        name: isort (python)
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.19.1
