@@ -1,0 +1,63 @@
+name: "Run tasks"
+on:
+  pull_request:
+    types: [edited, opened, synchronize, reopened]
+
+jobs:
+  test:
+
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # shell: micromamba-shell {0}
+        shell: bash -l {0}
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-name: ci-pytest
+          condarc: |
+            channels:
+              - conda-forge
+              - irl
+          create-args: >-
+            python=${{ matrix.python-version }}
+            nanover-server
+          init-shell: >-
+            bash
+
+      - name: Display Python version
+        # shell: micromamba-shell {0}
+        run: |
+          which python
+          python -c "import sys; print(sys.version)"
+
+      - name: Install dependencies
+        # shell: micromamba-shell {0}
+        run: |
+          pip install . --group dev
+
+      - name: Run (py)tests
+        # shell: micromamba-shell {0}
+        run: |
+          task tests
+
+      - name: Ensure consistent formatting
+        run: |
+          task format
+
+      - name: Linting and type checking
+        run: |
+          task lint && task type
+
+      - name: Coverage
+        env:
+          COVERAGE_FILE: .coverage
+          COVERAGE_DEBUG: dataio
+        run: |
+          task coverage
