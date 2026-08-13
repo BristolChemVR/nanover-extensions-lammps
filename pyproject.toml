@@ -80,6 +80,7 @@ pydocstyle.convention = "google"
 fixable = ["ALL"]
 select = ["ALL"]
 ignore = [
+    "I", # Do not isort
     "FA102", # Flake8-future-annotations
     "F401", # Disable fix for unused imports
     "B904", # Allow raising exceptions without from e
@@ -89,6 +90,10 @@ ignore = [
     "ERA", # Eradicate – detects commented-out code
     "BLE001", # Catch-all exceptions
     "D100", # missing docstring in public module
+    "D101", # Missing docstring in public class
+    "D102", # Missing docstring in public method
+    "D103", # Missing docstring in public function
+    "D104", # Missing docstring in public package
     "D105", # undocumented magic method
     "D107", # undocumented public init
     "D203", # incorrect-blank-line-before-class
@@ -99,10 +104,22 @@ ignore = [
     "S311", # rand-usage
     "EM102", # f-string-exception
     "TRY003", # long-exception-messages
+    "COM812", # Ignore missing trailing comma.
+    "E501", # Ignore line length - using black for formatting.
+    "ISC002", # Ignore implicitly concatenated string literals - using black for formatting
+    "ANN401", # Ignore disallow `typing.Any` as parameter.
+    "ARG002", # Ignore unused arguments
+    "TD003", # Ignore missing issue link in TODO - most repos are initial phase of development
+    "FIX002", # Ignore TODO not fixed - most repos are initial phase of development
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "D1", "ANN", "PLR2004", "INP001"]
 
 
 [tool.mypy]
+mypy_path = "src"
+explicit_package_bases = true
 files = ["src", "tests"]
 ignore_missing_imports = true
 disallow_untyped_defs = true
