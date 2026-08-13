@@ -130,4 +130,3 @@ site_name = "nanover-extensions-lammps"
 name = "material"
 custom_dir = "docs"
 palette = {scheme= "slate", primary="deep purple", accent="purple"}
-

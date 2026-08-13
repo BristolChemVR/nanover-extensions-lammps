@@ -6,7 +6,7 @@
   "ruff.configurationPreference": "filesystemFirst",
   "ruff.configuration": "pyproject.toml",
 
-  
+
   // mypy settings
   "python.linting.mypyEnabled": true,
   "python.linting.mypyArgs": [
@@ -15,5 +15,5 @@
     "--show-column-numbers",
     "--strict"
   ]
-  
+
 }

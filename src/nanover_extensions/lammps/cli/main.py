@@ -9,7 +9,7 @@ app.add_typer(lammps_app)
 
 def main():
     app()
-    
+
 
 if __name__ == "__main__":
     main()

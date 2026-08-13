@@ -1,9 +1,7 @@
 import os
 import time
-
 from glob import glob
 from pathlib import Path
-
 from typing import Annotated
 
 import typer
@@ -37,7 +35,9 @@ def lammps(
     record_to_path: Annotated[
         Path | None,
         typer.Option(
-            "-r", "--record-to-path", help="Record trajectory and state to files."
+            "-r",
+            "--record-to-path",
+            help="Record trajectory and state to files.",
         ),
     ] = None,
     omp_num_threads: Annotated[
@@ -76,7 +76,7 @@ def lammps(
                         natoms = int(simulation.lmp.get_natoms())
                         print(
                             f"LAMMPS simulation with {natoms} atoms loaded from {path} "
-                            f"(frame interval: {frame_interval})"
+                            f"(frame interval: {frame_interval})",
                         )
                     except NotImplementedError as e:
                         print(f"LAMMPS simulation not yet implemented: {e}")

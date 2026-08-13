@@ -1,11 +1,16 @@
-import lammps
-from pathlib import Path
-import numpy as np
 import ctypes
 import warnings
+from pathlib import Path
 
+import numpy as np
+
+import lammps
 from nanover_extensions.lammps.converter import lammps_to_frame_data
-from nanover_extensions.lammps.imd import LammpsImdForceManager, detect_lammps_units, get_unit_conversions
+from nanover_extensions.lammps.imd import (
+    LammpsImdForceManager,
+    detect_lammps_units,
+    get_unit_conversions,
+)
 
 
 class LAMMPSSimulation:
@@ -107,7 +112,8 @@ class LAMMPSSimulation:
                 )
                 if len(bonded_atoms) < natoms:
                     raw_pos = np.asarray(
-                        self.lmp.gather_atoms("x", 1, 3), dtype=float
+                        self.lmp.gather_atoms("x", 1, 3),
+                        dtype=float,
                     ).reshape((natoms, 3))
                     # Convert positions to Å regardless of LAMMPS unit style
                     # so that the bond-distance thresholds (which are in Å) are correct.
@@ -116,24 +122,35 @@ class LAMMPSSimulation:
                     # wrap into the primary cell first — gather_atoms("x") isn't
                     # guaranteed to be in [xlo, xhi), which would break bond inference
                     _box = self.lmp.extract_box()
-                    _lo = np.array([float(_box[0][0]), float(_box[0][1]), float(_box[0][2])], dtype=float)
-                    _L  = np.array([float(_box[1][0]) - float(_box[0][0]),
-                                    float(_box[1][1]) - float(_box[0][1]),
-                                    float(_box[1][2]) - float(_box[0][2])], dtype=float)
+                    _lo = np.array(
+                        [float(_box[0][0]), float(_box[0][1]), float(_box[0][2])],
+                        dtype=float,
+                    )
+                    _L = np.array(
+                        [
+                            float(_box[1][0]) - float(_box[0][0]),
+                            float(_box[1][1]) - float(_box[0][1]),
+                            float(_box[1][2]) - float(_box[0][2]),
+                        ],
+                        dtype=float,
+                    )
                     raw_pos = (raw_pos - _lo) % _L + _lo
                     # box_lengths=None: a PBC-straddling bond would render as a line
                     # across the whole cell, so we'd rather miss a few edge bonds
                     extra_orders, extra_pairs = self._generate_bonds_from_positions(
-                        raw_pos * to_angstrom, self._particle_elements, box_lengths=None
+                        raw_pos * to_angstrom,
+                        self._particle_elements,
+                        box_lengths=None,
                     )
                     if len(extra_pairs) > 0:
                         # only keep inferred bonds touching a previously-unbonded atom
                         unbonded = np.array(
-                            sorted(set(range(natoms)) - bonded_atoms), dtype=np.int32
+                            sorted(set(range(natoms)) - bonded_atoms),
+                            dtype=np.int32,
                         )
-                        mask = (
-                            np.isin(extra_pairs[:, 0], unbonded)
-                            | np.isin(extra_pairs[:, 1], unbonded)
+                        mask = np.isin(extra_pairs[:, 0], unbonded) | np.isin(
+                            extra_pairs[:, 1],
+                            unbonded,
                         )
                         extra_pairs = extra_pairs[mask]
                         extra_orders = extra_orders[mask]
@@ -155,15 +172,20 @@ class LAMMPSSimulation:
         xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
 
         self._bond_pairs, self._bond_orders = self._filter_pbc_bonds(
-            positions, box_bounds, self._bond_pairs, self._bond_orders
+            positions,
+            box_bounds,
+            self._bond_pairs,
+            self._bond_orders,
         )
 
         if self._is_periodic.all():
-            pbc_vectors = np.diag([
-                (xhi - xlo) * self._pos_to_nm,
-                (yhi - ylo) * self._pos_to_nm,
-                (zhi - zlo) * self._pos_to_nm,
-            ])
+            pbc_vectors = np.diag(
+                [
+                    (xhi - xlo) * self._pos_to_nm,
+                    (yhi - ylo) * self._pos_to_nm,
+                    (zhi - zlo) * self._pos_to_nm,
+                ],
+            )
         else:
             pbc_vectors = None
 
@@ -184,9 +206,12 @@ class LAMMPSSimulation:
             topology_frame = lammps_to_frame_data(
                 positions_nm=positions * self._pos_to_nm,
                 box_bounds_nm=(
-                    xlo * self._pos_to_nm, xhi * self._pos_to_nm,
-                    ylo * self._pos_to_nm, yhi * self._pos_to_nm,
-                    zlo * self._pos_to_nm, zhi * self._pos_to_nm,
+                    xlo * self._pos_to_nm,
+                    xhi * self._pos_to_nm,
+                    ylo * self._pos_to_nm,
+                    yhi * self._pos_to_nm,
+                    zlo * self._pos_to_nm,
+                    zhi * self._pos_to_nm,
                 ),
                 particle_count=natoms,
                 particle_elements=self._particle_elements,
@@ -212,7 +237,8 @@ class LAMMPSSimulation:
         box_bounds = (xlo, xhi, ylo, yhi, zlo, zhi)
 
         positions = np.asarray(
-            self.lmp.gather_atoms("x", 1, 3), dtype=float
+            self.lmp.gather_atoms("x", 1, 3),
+            dtype=float,
         ).reshape((natoms, 3))
 
         L = np.array([xhi - xlo, yhi - ylo, zhi - zlo], dtype=float)
@@ -228,31 +254,33 @@ class LAMMPSSimulation:
     def _build_particle_elements(self) -> np.ndarray:
         """Map LAMMPS per-atom type to atomic number (uint8), via explicit overrides or mass."""
         natoms = int(self.lmp.get_natoms())
-        lmp_types = np.asarray(self.lmp.gather_atoms("type", 0, 1), dtype=np.int32).reshape((natoms,))
+        lmp_types = np.asarray(self.lmp.gather_atoms("type", 0, 1), dtype=np.int32).reshape(
+            (natoms,),
+        )
 
         # (atomic_number, atomic_weight) reference table, extend as needed
         mass_table: list[tuple[int, float]] = [
-            (1, 1.00794),    # H
-            (6, 12.0107),    # C
-            (7, 14.0067),    # N
-            (8, 15.9994),    # O
-            (9, 18.9984),    # F
-            (11, 22.9898),   # Na
-            (12, 24.3050),   # Mg
-            (13, 26.9815),   # Al
-            (14, 28.0855),   # Si
-            (15, 30.9738),   # P
-            (16, 32.065),    # S
-            (17, 35.453),    # Cl
-            (19, 39.0983),   # K
-            (20, 40.078),    # Ca
-            (26, 55.845),    # Fe
-            (29, 63.546),    # Cu
-            (30, 65.38),     # Zn
-            (35, 79.904),    # Br
-            (53, 126.904),   # I
+            (1, 1.00794),  # H
+            (6, 12.0107),  # C
+            (7, 14.0067),  # N
+            (8, 15.9994),  # O
+            (9, 18.9984),  # F
+            (11, 22.9898),  # Na
+            (12, 24.3050),  # Mg
+            (13, 26.9815),  # Al
+            (14, 28.0855),  # Si
+            (15, 30.9738),  # P
+            (16, 32.065),  # S
+            (17, 35.453),  # Cl
+            (19, 39.0983),  # K
+            (20, 40.078),  # Ca
+            (26, 55.845),  # Fe
+            (29, 63.546),  # Cu
+            (30, 65.38),  # Zn
+            (35, 79.904),  # Br
+            (53, 126.904),  # I
         ]
-    
+
         def closest_z_from_mass(m: float, tol: float = 0.6) -> int | None:
             """Return closest atomic number by mass if within tolerance, else None."""
             best_z: int | None = None
@@ -265,10 +293,10 @@ class LAMMPSSimulation:
             if best_z is None or best_diff > tol:
                 return None
             return best_z
-    
+
         # Infer number of types from observed types (safe across LAMMPS builds)
         ntypes = int(lmp_types.max(initial=0))
-    
+
         # LAMMPS per-type arrays are 1-based (mass[1..ntypes])
         masses = None
         try:
@@ -279,9 +307,11 @@ class LAMMPSSimulation:
                     shape=(ntypes + 1,),
                 )
         except Exception as e:
-            warnings.warn(f"Could not read per-type masses; elements inferred from mass will be missing: {e}")
+            warnings.warn(
+                f"Could not read per-type masses; elements inferred from mass will be missing: {e}",
+            )
             masses = None
-    
+
         # Fill in any missing type->Z mapping using masses.
         if masses is not None:
             for t in range(1, ntypes + 1):
@@ -291,7 +321,7 @@ class LAMMPSSimulation:
                 z = closest_z_from_mass(m)
                 if z is not None:
                     self.type_to_atomic_number[int(t)] = int(z)
-    
+
         out = np.empty(natoms, dtype=np.uint8)
         for i, t in enumerate(lmp_types):
             z = self.type_to_atomic_number.get(int(t))
@@ -299,7 +329,7 @@ class LAMMPSSimulation:
         return out
 
     def extract_bonds(self):
-        bonds = self.lmp.numpy.gather_bonds()   # [type, id1, id2]
+        bonds = self.lmp.numpy.gather_bonds()  # [type, id1, id2]
 
         if self._id_to_index is None:
             self._id_to_index = self._build_id_to_index_map()
@@ -326,11 +356,25 @@ class LAMMPSSimulation:
         """Infer bonds when distance < 1.15 * (covalent radius sum). Positions in Å."""
         # radii from Alvarez, Dalton Trans. 2008, 2832 (single-bond covalent radii)
         _RADII_BY_Z: dict[int, float] = {
-            1: 0.31, 6: 0.76, 7: 0.71, 8: 0.66, 9: 0.57,
-            11: 1.66, 12: 1.41, 13: 1.21, 14: 1.11,
-            15: 1.07, 16: 1.05, 17: 1.02, 19: 2.03,
-            20: 1.76, 26: 1.52, 29: 1.32, 30: 1.22,
-            35: 1.20, 53: 1.39,
+            1: 0.31,
+            6: 0.76,
+            7: 0.71,
+            8: 0.66,
+            9: 0.57,
+            11: 1.66,
+            12: 1.41,
+            13: 1.21,
+            14: 1.11,
+            15: 1.07,
+            16: 1.05,
+            17: 1.02,
+            19: 2.03,
+            20: 1.76,
+            26: 1.52,
+            29: 1.32,
+            30: 1.22,
+            35: 1.20,
+            53: 1.39,
         }
         _DEFAULT_RADIUS = 0.80  # Å fallback for unlisted elements
         _BOND_FACTOR = 1.15
@@ -340,11 +384,11 @@ class LAMMPSSimulation:
 
         bond_pairs: list[tuple[int, int]] = []
         for i in range(n):
-            diffs = positions[i + 1:] - positions[i]  # (n-i-1, 3)
+            diffs = positions[i + 1 :] - positions[i]  # (n-i-1, 3)
             if box_lengths is not None:
                 diffs -= np.round(diffs / box_lengths) * box_lengths
             dists = np.linalg.norm(diffs, axis=1)
-            cutoffs = _BOND_FACTOR * (radii[i] + radii[i + 1:])
+            cutoffs = _BOND_FACTOR * (radii[i] + radii[i + 1 :])
             for k in np.where(dists < cutoffs)[0]:
                 bond_pairs.append((i, i + 1 + k))
 
@@ -365,16 +409,22 @@ class LAMMPSSimulation:
             self._imd_force_manager.update_interactions(positions_nm=positions * self._pos_to_nm)
 
         vis_pairs, vis_orders = self._filter_pbc_bonds(
-            positions, box_bounds, self._bond_pairs, self._bond_orders
+            positions,
+            box_bounds,
+            self._bond_pairs,
+            self._bond_orders,
         )
 
         xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
         frame = lammps_to_frame_data(
             positions_nm=positions * self._pos_to_nm,
             box_bounds_nm=(
-                xlo * self._pos_to_nm, xhi * self._pos_to_nm,
-                ylo * self._pos_to_nm, yhi * self._pos_to_nm,
-                zlo * self._pos_to_nm, zhi * self._pos_to_nm,
+                xlo * self._pos_to_nm,
+                xhi * self._pos_to_nm,
+                ylo * self._pos_to_nm,
+                yhi * self._pos_to_nm,
+                zlo * self._pos_to_nm,
+                zhi * self._pos_to_nm,
             ),
             bond_pairs=vis_pairs,
             bond_orders=vis_orders,
@@ -386,5 +436,3 @@ class LAMMPSSimulation:
 
         if self._app_server is not None:
             self._app_server.frame_publisher.send_frame(frame)
-
-

@@ -7,9 +7,8 @@ import warnings
 
 import numpy as np
 import numpy.typing as npt
-
-from nanover.imd.imd_force import calculate_imd_force, get_sparse_forces
 from nanover.imd import ImdStateWrapper
+from nanover.imd.imd_force import calculate_imd_force, get_sparse_forces
 from nanover.trajectory import FrameData
 
 # Conversion factors per LAMMPS unit style.
@@ -20,18 +19,18 @@ from nanover.trajectory import FrameData
 _UNIT_CONVERSIONS: dict[str, tuple[float, float, float]] = {
     # real  : positions Å, forces kcal/(mol·Å), masses g/mol (= amu)
     #   1 kJ/(mol·nm) = 0.1 kJ/(mol·Å) = 0.023901 kcal/(mol·Å)
-    "real":   (0.1,  0.023901,    1.0),
+    "real": (0.1, 0.023901, 1.0),
     # metal : positions Å, forces eV/Å, masses g/mol (= amu)
     #   1 kJ/(mol·nm) = 1/(96.485 * 10) eV/Å ≈ 1.03643e-3 eV/Å
-    "metal":  (0.1,  1.03643e-3,  1.0),
+    "metal": (0.1, 1.03643e-3, 1.0),
     # si    : positions m, forces N (per atom), masses kg
     #   1 kJ/(mol·nm) = 1e3/(6.02214076e23 * 1e-9) N ≈ 1.66054e-12 N
     #   1 kg = 1/(1.66054e-27) amu ≈ 6.02214076e26 amu
-    "si":     (1e9,  1.66054e-12, 6.02214076e26),
+    "si": (1e9, 1.66054e-12, 6.02214076e26),
     # nano  : positions nm (already), forces ag·nm/ns², masses ag
     #   1 kJ/(mol·nm) ≈ 0.069477 ag·nm/ns²
     #   1 ag = 1e-18 g / (1.66054e-24 g/amu) ≈ 6.02214076e5 amu
-    "nano":   (1.0,  0.069477,    6.02214076e5),
+    "nano": (1.0, 0.069477, 6.02214076e5),
 }
 
 
@@ -42,7 +41,7 @@ def get_unit_conversions(lammps_units: str) -> tuple[float, float, float]:
     except KeyError:
         raise ValueError(
             f"Unsupported LAMMPS unit style '{lammps_units}'. "
-            f"Supported styles: {list(_UNIT_CONVERSIONS)}"
+            f"Supported styles: {list(_UNIT_CONVERSIONS)}",
         )
 
 
@@ -187,7 +186,9 @@ class LammpsImdForceManager:
                     ctypes.cast(mass_ptr, ctypes.POINTER(ctypes.c_double)),
                     shape=(ntypes + 1,),
                 )
-                return np.array([float(masses_by_type[int(t)]) for t in lmp_types]) * self._mass_to_amu
+                return (
+                    np.array([float(masses_by_type[int(t)]) for t in lmp_types]) * self._mass_to_amu
+                )
         except Exception as e:
             warnings.warn(f"Could not read per-type masses, trying per-atom rmass: {e}")
 
@@ -205,6 +206,6 @@ class LammpsImdForceManager:
 
         warnings.warn(
             "Could not determine atom masses; using unit masses. "
-            "Mass-weighted IMD interactions will be inaccurate."
+            "Mass-weighted IMD interactions will be inaccurate.",
         )
         return np.ones(natoms, dtype=np.float64)
