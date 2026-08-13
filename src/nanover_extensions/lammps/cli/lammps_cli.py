@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+
 os.environ["OMP_NUM_THREADS"] = "4"
 
 from nanover.omni import OmniRunner
@@ -50,8 +51,7 @@ def lammps(
     ] = 4,
     quiet: Annotated[bool, typer.Option(help="Whether to suppress LAMMPS outputs.")] = False,
 ):
-    if omp_num_threads is not None:
-        os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
+    if omp_num_threads is not None: os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
 
     with OmniRunner.with_basic_server() as runner:
         for entry in entries:
@@ -91,8 +91,8 @@ def lammps(
             runner.print_basic_info()
 
         if record_to_path is not None:
-            stem = record_to_path
-            if stem == "":
+            stem = str(record_to_path)
+            if stem in (".", ""):
                 timestamp = time.strftime("%Y-%m-%d-%H%M-%S", time.gmtime())
                 stem = f"omni-recording-{timestamp}"
 
