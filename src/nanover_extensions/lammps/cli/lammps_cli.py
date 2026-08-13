@@ -51,7 +51,8 @@ def lammps(
     ] = 4,
     quiet: Annotated[bool, typer.Option(help="Whether to suppress LAMMPS outputs.")] = False,
 ):
-    if omp_num_threads is not None: os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
+    if omp_num_threads is not None:
+        os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
 
     with OmniRunner.with_basic_server() as runner:
         for entry in entries:
