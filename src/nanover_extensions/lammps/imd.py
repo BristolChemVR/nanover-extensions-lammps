@@ -4,12 +4,16 @@ Manage NanoVer IMD force injection into a LAMMPS simulation via fix external.
 
 import ctypes
 import warnings
+from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
 from nanover.imd import ImdStateWrapper
 from nanover.imd.imd_force import calculate_imd_force, get_sparse_forces
 from nanover.trajectory import FrameData
+
+if TYPE_CHECKING:
+    import lammps
 
 # Conversion factors per LAMMPS unit style.
 # Each entry is (pos_to_nm, force_from_kjmol_per_nm, mass_to_amu):
@@ -45,7 +49,7 @@ def get_unit_conversions(lammps_units: str) -> tuple[float, float, float]:
         )
 
 
-def detect_lammps_units(lmp) -> str:
+def detect_lammps_units(lmp: "lammps.lammps") -> str:
     """Detect the LAMMPS unit style, falling back to "real" if detection fails."""
     try:
         units = lmp.extract_global("units")
@@ -58,7 +62,9 @@ def detect_lammps_units(lmp) -> str:
     if isinstance(units, str) and units in _UNIT_CONVERSIONS:
         return units
 
-    warnings.warn(f"Unsupported or undetected LAMMPS unit style {units!r}, assuming 'real'.")
+    warnings.warn(
+        f"Unsupported or undetected LAMMPS unit style {units!r}, assuming 'real'."
+    )
     return "real"
 
 
@@ -67,12 +73,12 @@ class LammpsImdForceManager:
 
     def __init__(
         self,
-        lmp,
+        lmp: "lammps.lammps",
         imd_state: ImdStateWrapper | None,
         id_to_index: dict[int, int],
         pbc_vectors: np.ndarray | None = None,
         lammps_units: str | None = None,
-    ):
+    ) -> None:
         self.lmp = lmp
         self.imd_state = imd_state
         self._id_to_index = id_to_index  # LAMMPS atom ID → NanoVer 0-based index
@@ -85,7 +91,9 @@ class LammpsImdForceManager:
 
         if lammps_units is None:
             lammps_units = detect_lammps_units(lmp)
-        _, self._force_from_kjmol_nm, self._mass_to_amu = get_unit_conversions(lammps_units)
+        _, self._force_from_kjmol_nm, self._mass_to_amu = get_unit_conversions(
+            lammps_units
+        )
 
         self._masses: np.ndarray = self._get_masses(len(id_to_index))
 
@@ -138,7 +146,9 @@ class LammpsImdForceManager:
         )
 
         # Cache forces converted to LAMMPS units for the callback to apply
-        self._current_lammps_forces = np.asarray(forces_kjmol) * self._force_from_kjmol_nm
+        self._current_lammps_forces = (
+            np.asarray(forces_kjmol) * self._force_from_kjmol_nm
+        )
 
         self._is_force_dirty = True
         self.total_user_energy = float(energy)
@@ -159,7 +169,15 @@ class LammpsImdForceManager:
         except Exception:
             pass  # LAMMPS may have already removed the fix; safe to ignore
 
-    def _callback(self, lmp, ntimestep, nlocal, tag, x, fexternal) -> None:
+    def _callback(
+        self,
+        lmp: "lammps.lammps",
+        ntimestep: int,
+        nlocal: int,
+        tag: list,
+        x: list,
+        fexternal: np.ndarray,
+    ) -> None:
         """LAMMPS fix-external callback: scatter cached forces into fexternal each timestep."""
         if self._current_lammps_forces is None:
             # zero fexternal even with no interactions — atom migration can regrow it uninitialised
@@ -187,7 +205,8 @@ class LammpsImdForceManager:
                     shape=(ntypes + 1,),
                 )
                 return (
-                    np.array([float(masses_by_type[int(t)]) for t in lmp_types]) * self._mass_to_amu
+                    np.array([float(masses_by_type[int(t)]) for t in lmp_types])
+                    * self._mass_to_amu
                 )
         except Exception as e:
             warnings.warn(f"Could not read per-type masses, trying per-atom rmass: {e}")

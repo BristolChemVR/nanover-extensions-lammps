@@ -1,6 +1,4 @@
-"""
-Interface between LAMMPS and Nanover
-"""
+"""Interface between LAMMPS and Nanover."""
 
 # from .simulation import LAMMPSSimulation
 # from .simulation import LammpsImdForceManager

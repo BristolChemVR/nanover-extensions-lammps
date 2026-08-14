@@ -6,7 +6,6 @@ from typing import Annotated
 
 import typer
 
-
 os.environ["OMP_NUM_THREADS"] = "4"
 
 from nanover.omni import OmniRunner
@@ -17,7 +16,7 @@ from nanover_extensions.lammps.simulation import LAMMPSSimulation
 app = typer.Typer()
 
 
-def _list_to_str(s: str, seperator=",") -> list[str]:
+def _list_to_str(s: str, seperator: str = ",") -> list[str]:
     """Takes a given input of `seperator` split list of files converts to a list of str."""
     return s.split(seperator)
 
@@ -25,7 +24,7 @@ def _list_to_str(s: str, seperator=",") -> list[str]:
 @app.command()
 def lammps(
     entries: Annotated[
-        list[str],
+        list[list[str]],
         typer.Option(
             "-e",
             "--entries",
@@ -49,8 +48,10 @@ def lammps(
             help="Set OMP_NUM_THREADS for OpenMP parallelism (default: 4).",
         ),
     ] = 4,
-    quiet: Annotated[bool, typer.Option(help="Whether to suppress LAMMPS outputs.")] = False,
-):
+    quiet: Annotated[
+        bool, typer.Option(help="Whether to suppress LAMMPS outputs.")
+    ] = False,
+) -> None:
     if omp_num_threads is not None:
         os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
 

@@ -1,10 +1,11 @@
 import ctypes
 import warnings
 from pathlib import Path
-
-import numpy as np
+from typing import Any
 
 import lammps
+import numpy as np
+
 from nanover_extensions.lammps.converter import lammps_to_frame_data
 from nanover_extensions.lammps.imd import (
     LammpsImdForceManager,
@@ -18,15 +19,15 @@ class LAMMPSSimulation:
 
     def __init__(
         self,
-        input_script,
-        include_velocities=False,
-        include_forces=False,
-        frame_interval_steps=1,
+        input_script: str | Path,
+        include_velocities: bool = False,
+        include_forces: bool = False,
+        frame_interval_steps: int = 1,
         type_to_atomic_number: dict[int, int] | None = None,
         lammps_units: str | None = None,
         generate_bonds: bool = True,
         quiet: bool = False,
-    ):
+    ) -> None:
         self.input_script = input_script
         self.include_velocities = include_velocities
         self.include_forces = include_forces
@@ -61,14 +62,14 @@ class LAMMPSSimulation:
         self._imd_force_manager: LammpsImdForceManager | None = None
         self._needs_pre: bool = True  # True after reset() until first step()
 
-    def step(self, n=1):
+    def step(self, n: int = 1) -> None:
         if self._needs_pre:
             self.lmp.command(f"run {int(n)} post no")
             self._needs_pre = False
         else:
             self.lmp.command(f"run {int(n)} pre no post no")
 
-    def load(self):
+    def load(self) -> None:
         pass
 
     def _build_id_to_index_map(self) -> dict[int, int]:
@@ -76,9 +77,14 @@ class LAMMPSSimulation:
         return {int(aid): i for i, aid in enumerate(ids)}
 
     @staticmethod
-    def _filter_pbc_bonds(positions, box_bounds, bond_pairs, bond_orders):
+    def _filter_pbc_bonds(
+        positions: np.ndarray,
+        box_bounds: tuple[float, float, float, float, float, float],
+        bond_pairs: np.ndarray | None,
+        bond_orders: np.ndarray | None,
+    ) -> tuple[np.ndarray | None, np.ndarray | None]:
         """Drop bonds longer than half the shortest box edge — these are PBC artefacts."""
-        if bond_pairs is None or len(bond_pairs) == 0:
+        if bond_pairs is None or bond_orders is None or len(bond_pairs) == 0:
             return bond_pairs, bond_orders
         xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
         min_half_L = min(xhi - xlo, yhi - ylo, zhi - zlo) * 0.5
@@ -86,7 +92,7 @@ class LAMMPSSimulation:
         keep = np.linalg.norm(delta, axis=1) < min_half_L
         return bond_pairs[keep], bond_orders[keep]
 
-    def reset(self, app_server=None):
+    def reset(self, app_server: Any | None = None) -> None:
         if app_server is not None:
             self._app_server = app_server
 
@@ -222,13 +228,15 @@ class LAMMPSSimulation:
             self._app_server.frame_publisher.send_clear()
             self._app_server.frame_publisher.send_frame(topology_frame)
 
-    def advance_by_one_step(self):
+    def advance_by_one_step(self) -> None:
         self.advance_to_next_frame()
 
-    def advance_by_seconds(self, dt: float):
+    def advance_by_seconds(self, dt: float) -> None:
         self.advance_to_next_frame()
 
-    def _get_positions_and_box(self):
+    def _get_positions_and_box(
+        self,
+    ) -> tuple[np.ndarray, tuple[float, float, float, float, float, float]]:
         natoms = int(self.lmp.get_natoms())
 
         box = self.lmp.extract_box()
@@ -254,7 +262,9 @@ class LAMMPSSimulation:
     def _build_particle_elements(self) -> np.ndarray:
         """Map LAMMPS per-atom type to atomic number (uint8), via explicit overrides or mass."""
         natoms = int(self.lmp.get_natoms())
-        lmp_types = np.asarray(self.lmp.gather_atoms("type", 0, 1), dtype=np.int32).reshape(
+        lmp_types = np.asarray(
+            self.lmp.gather_atoms("type", 0, 1), dtype=np.int32
+        ).reshape(
             (natoms,),
         )
 
@@ -314,13 +324,13 @@ class LAMMPSSimulation:
 
         # Fill in any missing type->Z mapping using masses.
         if masses is not None:
-            for t in range(1, ntypes + 1):
-                if int(t) in self.type_to_atomic_number:
-                    continue  # explicit override wins
-                m = float(masses[t])
+            for atom_type in range(1, ntypes + 1):
+                if int(atom_type) in self.type_to_atomic_number:
+                    continue  # explicit override
+                m = float(masses[atom_type])
                 z = closest_z_from_mass(m)
                 if z is not None:
-                    self.type_to_atomic_number[int(t)] = int(z)
+                    self.type_to_atomic_number[int(atom_type)] = int(z)
 
         out = np.empty(natoms, dtype=np.uint8)
         for i, t in enumerate(lmp_types):
@@ -328,7 +338,7 @@ class LAMMPSSimulation:
             out[i] = np.uint8(0 if z is None else max(0, min(255, int(z))))
         return out
 
-    def extract_bonds(self):
+    def extract_bonds(self) -> tuple[np.ndarray, np.ndarray]:
         bonds = self.lmp.numpy.gather_bonds()  # [type, id1, id2]
 
         if self._id_to_index is None:
@@ -399,14 +409,17 @@ class LAMMPSSimulation:
         orders = np.ones(len(pairs), dtype=np.int32)
         return orders, pairs
 
-    def advance_to_next_frame(self):
+    def advance_to_next_frame(self) -> None:
+        """Advance the simulation by frame_interval steps and send a frame to the app server."""
         self.step(self.frame_interval)
         self._current_step += self.frame_interval
 
         positions, box_bounds = self._get_positions_and_box()
 
         if self._imd_force_manager is not None:
-            self._imd_force_manager.update_interactions(positions_nm=positions * self._pos_to_nm)
+            self._imd_force_manager.update_interactions(
+                positions_nm=positions * self._pos_to_nm
+            )
 
         vis_pairs, vis_orders = self._filter_pbc_bonds(
             positions,
