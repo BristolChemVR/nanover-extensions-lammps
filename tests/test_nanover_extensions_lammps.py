@@ -1,7 +1,9 @@
-import pytest
 import numpy as np
-from nanover_extensions.lammps.imd import detect_lammps_units, get_unit_conversions
+import pytest
+
 from nanover_extensions.lammps.converter import lammps_to_frame_data
+from nanover_extensions.lammps.imd import (detect_lammps_units,
+                                           get_unit_conversions)
 
 
 def test_real_units_conversions() -> None:
@@ -37,7 +39,8 @@ def test_close_hyrdrogen_bonds(two_atom_positions: np.ndarray) -> None:
 
 
 @pytest.mark.parametrize(
-    ("style", "expected_pos"), [("real", 0.1), ("metal", 0.1), ("si", 1e9), ("nano", 1.0)]
+    ("style", "expected_pos"),
+    [("real", 0.1), ("metal", 0.1), ("si", 1e9), ("nano", 1.0)],
 )
 def test_position_conversion(style: str, expected_pos: float) -> None:
     pos_to_nm, _, _ = get_unit_conversions(style)

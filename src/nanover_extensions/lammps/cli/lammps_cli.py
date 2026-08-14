@@ -48,7 +48,9 @@ def lammps(
             help="Set OMP_NUM_THREADS for OpenMP parallelism (default: 4).",
         ),
     ] = 4,
-    quiet: Annotated[bool, typer.Option(help="Whether to suppress LAMMPS outputs.")] = False,
+    quiet: Annotated[
+        bool, typer.Option(help="Whether to suppress LAMMPS outputs.")
+    ] = False,
 ) -> None:
     if omp_num_threads is not None:
         os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)

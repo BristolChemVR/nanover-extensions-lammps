@@ -7,11 +7,9 @@ import lammps
 import numpy as np
 
 from nanover_extensions.lammps.converter import lammps_to_frame_data
-from nanover_extensions.lammps.imd import (
-    LammpsImdForceManager,
-    detect_lammps_units,
-    get_unit_conversions,
-)
+from nanover_extensions.lammps.imd import (LammpsImdForceManager,
+                                           detect_lammps_units,
+                                           get_unit_conversions)
 
 # radii from Alvarez, Dalton Trans. 2008, 2832 (single-bond covalent radii)
 _RADII_BY_Z: dict[int, float] = {
@@ -288,7 +286,9 @@ class LAMMPSSimulation:
     def _build_particle_elements(self) -> np.ndarray:
         """Map LAMMPS per-atom type to atomic number (uint8), via explicit overrides or mass."""
         natoms = int(self.lmp.get_natoms())
-        lmp_types = np.asarray(self.lmp.gather_atoms("type", 0, 1), dtype=np.int32).reshape(
+        lmp_types = np.asarray(
+            self.lmp.gather_atoms("type", 0, 1), dtype=np.int32
+        ).reshape(
             (natoms,),
         )
 
@@ -416,7 +416,9 @@ class LAMMPSSimulation:
         positions, box_bounds = self._get_positions_and_box()
 
         if self._imd_force_manager is not None:
-            self._imd_force_manager.update_interactions(positions_nm=positions * self._pos_to_nm)
+            self._imd_force_manager.update_interactions(
+                positions_nm=positions * self._pos_to_nm
+            )
 
         vis_pairs, vis_orders = self._filter_pbc_bonds(
             positions,

@@ -55,7 +55,9 @@ def detect_lammps_units(lmp: "lammps.lammps") -> str:
         if isinstance(units, (bytes, bytearray)):
             units = units.decode()
     except Exception as e:
-        warnings.warn(f"Could not detect LAMMPS unit style, assuming 'real': {e}", stacklevel=2)
+        warnings.warn(
+            f"Could not detect LAMMPS unit style, assuming 'real': {e}", stacklevel=2
+        )
         return "real"
 
     if isinstance(units, str) and units in _UNIT_CONVERSIONS:
@@ -91,7 +93,9 @@ class LammpsImdForceManager:
 
         if lammps_units is None:
             lammps_units = detect_lammps_units(lmp)
-        _, self._force_from_kjmol_nm, self._mass_to_amu = get_unit_conversions(lammps_units)
+        _, self._force_from_kjmol_nm, self._mass_to_amu = get_unit_conversions(
+            lammps_units
+        )
 
         self._masses: np.ndarray = self._get_masses(len(id_to_index))
 
@@ -147,7 +151,9 @@ class LammpsImdForceManager:
         )
 
         # Cache forces converted to LAMMPS units for the callback to apply
-        self._current_lammps_forces = np.asarray(forces_kjmol) * self._force_from_kjmol_nm
+        self._current_lammps_forces = (
+            np.asarray(forces_kjmol) * self._force_from_kjmol_nm
+        )
 
         self._is_force_dirty = True
         self.total_user_energy = float(energy)
@@ -202,7 +208,8 @@ class LammpsImdForceManager:
                     shape=(ntypes + 1,),
                 )
                 return (
-                    np.array([float(masses_by_type[int(t)]) for t in lmp_types]) * self._mass_to_amu
+                    np.array([float(masses_by_type[int(t)]) for t in lmp_types])
+                    * self._mass_to_amu
                 )
         except Exception as e:
             warnings.warn(
