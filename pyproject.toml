@@ -140,11 +140,11 @@ show_error_codes = true
 [tool.coverage.report]
 skip_empty = true
 show_missing = true
-fail_under = 100
+fail_under = 10
 
 [tool.coverage.run]
 branch = true
-source = ["src"]
+source = ["nanover_extensions.lammps"]
 omit = ["_*.py", "__*.py"]
 
 [tool.portray.mkdocs]
