@@ -116,12 +116,16 @@ ignore = [
     "ARG002", # Ignore unused arguments
     "TD003", # Ignore missing issue link in TODO - most repos are initial phase of development
     "FIX002", # Ignore TODO not fixed - most repos are initial phase of development
+    "PLR0917", # Ignore too many positional arguements on a callback function
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F401", "F403"]
 "tests/**" = ["S101", "D1", "ANN", "PLR2004", "INP001"]
+"src/nanover_extensions/lammps/cli/lammps_cli.py" = [ "FBT002", "PTH207"]
 
+[tool.ruff.lint.mccabe]
+max-complexity=12
 
 [tool.mypy]
 mypy_path = "src"

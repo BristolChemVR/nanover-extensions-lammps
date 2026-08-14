@@ -1,6 +1,3 @@
 import typer
 
-try:
-    app = typer.Typer()
-except:
-    pass
+app = typer.Typer()

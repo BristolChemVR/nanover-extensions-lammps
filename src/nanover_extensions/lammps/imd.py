@@ -1,7 +1,6 @@
-"""
-Manage NanoVer IMD force injection into a LAMMPS simulation via fix external.
-"""
+"""Manage NanoVer IMD force injection into a LAMMPS simulation via fix external."""
 
+import contextlib
 import ctypes
 import warnings
 from typing import TYPE_CHECKING
@@ -56,14 +55,15 @@ def detect_lammps_units(lmp: "lammps.lammps") -> str:
         if isinstance(units, (bytes, bytearray)):
             units = units.decode()
     except Exception as e:
-        warnings.warn(f"Could not detect LAMMPS unit style, assuming 'real': {e}")
+        warnings.warn(f"Could not detect LAMMPS unit style, assuming 'real': {e}", stacklevel=2)
         return "real"
 
     if isinstance(units, str) and units in _UNIT_CONVERSIONS:
         return units
 
     warnings.warn(
-        f"Unsupported or undetected LAMMPS unit style {units!r}, assuming 'real'."
+        f"Unsupported or undetected LAMMPS unit style {units!r}, assuming 'real'.",
+        stacklevel=2,
     )
     return "real"
 
@@ -91,9 +91,7 @@ class LammpsImdForceManager:
 
         if lammps_units is None:
             lammps_units = detect_lammps_units(lmp)
-        _, self._force_from_kjmol_nm, self._mass_to_amu = get_unit_conversions(
-            lammps_units
-        )
+        _, self._force_from_kjmol_nm, self._mass_to_amu = get_unit_conversions(lammps_units)
 
         self._masses: np.ndarray = self._get_masses(len(id_to_index))
 
@@ -108,10 +106,13 @@ class LammpsImdForceManager:
         self.periodic_box_lengths: np.ndarray | None = None
         if pbc_vectors is not None:
             pbc = np.asarray(pbc_vectors)
-            assert np.all(pbc == np.diagflat(np.diag(pbc))), (
-                "The periodic box vectors do not correspond to an orthorhombic cell. "
-                "Only orthorhombic PBC is currently supported for LAMMPS IMD."
-            )
+            if not np.all(pbc == np.diagflat(np.diag(pbc))):
+                warnings.warn(
+                    "The periodic box vectors do not correspond to an orthorhombic cell. "
+                    "Only orthorhombic PBC is currently supported for LAMMPS IMD.",
+                    stacklevel=2,
+                )
+
             self.periodic_box_lengths = np.diag(pbc)
 
         # Register fix external — callback is invoked every timestep inside run
@@ -146,9 +147,7 @@ class LammpsImdForceManager:
         )
 
         # Cache forces converted to LAMMPS units for the callback to apply
-        self._current_lammps_forces = (
-            np.asarray(forces_kjmol) * self._force_from_kjmol_nm
-        )
+        self._current_lammps_forces = np.asarray(forces_kjmol) * self._force_from_kjmol_nm
 
         self._is_force_dirty = True
         self.total_user_energy = float(energy)
@@ -164,10 +163,8 @@ class LammpsImdForceManager:
 
     def unfix(self) -> None:
         """Remove ``fix imd_nanover`` from LAMMPS.  Call before re-initialising."""
-        try:
+        with contextlib.suppress(Exception):
             self.lmp.command(f"unfix {self.FIX_ID}")
-        except Exception:
-            pass  # LAMMPS may have already removed the fix; safe to ignore
 
     def _callback(
         self,
@@ -205,11 +202,13 @@ class LammpsImdForceManager:
                     shape=(ntypes + 1,),
                 )
                 return (
-                    np.array([float(masses_by_type[int(t)]) for t in lmp_types])
-                    * self._mass_to_amu
+                    np.array([float(masses_by_type[int(t)]) for t in lmp_types]) * self._mass_to_amu
                 )
         except Exception as e:
-            warnings.warn(f"Could not read per-type masses, trying per-atom rmass: {e}")
+            warnings.warn(
+                f"Could not read per-type masses, trying per-atom rmass: {e}",
+                stacklevel=2,
+            )
 
         # per-atom mass, e.g. sphere/granular atom styles use rmass instead of per-type mass
         try:
@@ -221,10 +220,11 @@ class LammpsImdForceManager:
                 )
                 return rmass.copy() * self._mass_to_amu
         except Exception as e:
-            warnings.warn(f"Could not read per-atom rmass: {e}")
+            warnings.warn(f"Could not read per-atom rmass: {e}", stacklevel=2)
 
         warnings.warn(
             "Could not determine atom masses; using unit masses. "
             "Mass-weighted IMD interactions will be inaccurate.",
+            stacklevel=2,
         )
         return np.ones(natoms, dtype=np.float64)

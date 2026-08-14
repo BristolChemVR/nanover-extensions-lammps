@@ -13,6 +13,31 @@ from nanover_extensions.lammps.imd import (
     get_unit_conversions,
 )
 
+# radii from Alvarez, Dalton Trans. 2008, 2832 (single-bond covalent radii)
+_RADII_BY_Z: dict[int, float] = {
+    1: 0.31,
+    6: 0.76,
+    7: 0.71,
+    8: 0.66,
+    9: 0.57,
+    11: 1.66,
+    12: 1.41,
+    13: 1.21,
+    14: 1.11,
+    15: 1.07,
+    16: 1.05,
+    17: 1.02,
+    19: 2.03,
+    20: 1.76,
+    26: 1.52,
+    29: 1.32,
+    30: 1.22,
+    35: 1.20,
+    53: 1.39,
+}
+_DEFAULT_RADIUS = 0.80  # Å fallback for unlisted elements
+_BOND_FACTOR = 1.15
+
 
 class LAMMPSSimulation:
     """LAMMPS simulation wrapper implementing the Simulation protocol."""
@@ -20,11 +45,12 @@ class LAMMPSSimulation:
     def __init__(
         self,
         input_script: str | Path,
-        include_velocities: bool = False,
-        include_forces: bool = False,
-        frame_interval_steps: int = 1,
         type_to_atomic_number: dict[int, int] | None = None,
         lammps_units: str | None = None,
+        frame_interval_steps: int = 1,
+        *,
+        include_velocities: bool = False,
+        include_forces: bool = False,
         generate_bonds: bool = True,
         quiet: bool = False,
     ) -> None:
@@ -87,9 +113,9 @@ class LAMMPSSimulation:
         if bond_pairs is None or bond_orders is None or len(bond_pairs) == 0:
             return bond_pairs, bond_orders
         xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
-        min_half_L = min(xhi - xlo, yhi - ylo, zhi - zlo) * 0.5
+        min_half_length = min(xhi - xlo, yhi - ylo, zhi - zlo) * 0.5
         delta = positions[bond_pairs[:, 0]] - positions[bond_pairs[:, 1]]
-        keep = np.linalg.norm(delta, axis=1) < min_half_L
+        keep = np.linalg.norm(delta, axis=1) < min_half_length
         return bond_pairs[keep], bond_orders[keep]
 
     def reset(self, app_server: Any | None = None) -> None:
@@ -132,7 +158,7 @@ class LAMMPSSimulation:
                         [float(_box[0][0]), float(_box[0][1]), float(_box[0][2])],
                         dtype=float,
                     )
-                    _L = np.array(
+                    _box_lengths = np.array(
                         [
                             float(_box[1][0]) - float(_box[0][0]),
                             float(_box[1][1]) - float(_box[0][1]),
@@ -140,7 +166,7 @@ class LAMMPSSimulation:
                         ],
                         dtype=float,
                     )
-                    raw_pos = (raw_pos - _lo) % _L + _lo
+                    raw_pos = (raw_pos - _lo) % _box_lengths + _lo
                     # box_lengths=None: a PBC-straddling bond would render as a line
                     # across the whole cell, so we'd rather miss a few edge bonds
                     extra_orders, extra_pairs = self._generate_bonds_from_positions(
@@ -249,11 +275,11 @@ class LAMMPSSimulation:
             dtype=float,
         ).reshape((natoms, 3))
 
-        L = np.array([xhi - xlo, yhi - ylo, zhi - zlo], dtype=float)
+        _box_lengths = np.array([xhi - xlo, yhi - ylo, zhi - zlo], dtype=float)
         origin = np.array([xlo, ylo, zlo], dtype=float)
         shifted = positions - origin
         if self._is_periodic.any():
-            positions = np.where(self._is_periodic, shifted % L, shifted)
+            positions = np.where(self._is_periodic, shifted % _box_lengths, shifted)
         else:
             positions = shifted
 
@@ -262,9 +288,7 @@ class LAMMPSSimulation:
     def _build_particle_elements(self) -> np.ndarray:
         """Map LAMMPS per-atom type to atomic number (uint8), via explicit overrides or mass."""
         natoms = int(self.lmp.get_natoms())
-        lmp_types = np.asarray(
-            self.lmp.gather_atoms("type", 0, 1), dtype=np.int32
-        ).reshape(
+        lmp_types = np.asarray(self.lmp.gather_atoms("type", 0, 1), dtype=np.int32).reshape(
             (natoms,),
         )
 
@@ -319,6 +343,7 @@ class LAMMPSSimulation:
         except Exception as e:
             warnings.warn(
                 f"Could not read per-type masses; elements inferred from mass will be missing: {e}",
+                stacklevel=2,
             )
             masses = None
 
@@ -364,31 +389,6 @@ class LAMMPSSimulation:
         box_lengths: np.ndarray | None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Infer bonds when distance < 1.15 * (covalent radius sum). Positions in Å."""
-        # radii from Alvarez, Dalton Trans. 2008, 2832 (single-bond covalent radii)
-        _RADII_BY_Z: dict[int, float] = {
-            1: 0.31,
-            6: 0.76,
-            7: 0.71,
-            8: 0.66,
-            9: 0.57,
-            11: 1.66,
-            12: 1.41,
-            13: 1.21,
-            14: 1.11,
-            15: 1.07,
-            16: 1.05,
-            17: 1.02,
-            19: 2.03,
-            20: 1.76,
-            26: 1.52,
-            29: 1.32,
-            30: 1.22,
-            35: 1.20,
-            53: 1.39,
-        }
-        _DEFAULT_RADIUS = 0.80  # Å fallback for unlisted elements
-        _BOND_FACTOR = 1.15
-
         n = len(positions)
         radii = np.array([_RADII_BY_Z.get(int(z), _DEFAULT_RADIUS) for z in elements])
 
@@ -399,8 +399,7 @@ class LAMMPSSimulation:
                 diffs -= np.round(diffs / box_lengths) * box_lengths
             dists = np.linalg.norm(diffs, axis=1)
             cutoffs = _BOND_FACTOR * (radii[i] + radii[i + 1 :])
-            for k in np.where(dists < cutoffs)[0]:
-                bond_pairs.append((i, i + 1 + k))
+            bond_pairs.extend((i, i + 1 + k) for k in np.where(dists < cutoffs)[0])
 
         if not bond_pairs:
             return np.empty(0, dtype=np.int32), np.empty((0, 2), dtype=np.int32)
@@ -417,9 +416,7 @@ class LAMMPSSimulation:
         positions, box_bounds = self._get_positions_and_box()
 
         if self._imd_force_manager is not None:
-            self._imd_force_manager.update_interactions(
-                positions_nm=positions * self._pos_to_nm
-            )
+            self._imd_force_manager.update_interactions(positions_nm=positions * self._pos_to_nm)
 
         vis_pairs, vis_orders = self._filter_pbc_bonds(
             positions,
