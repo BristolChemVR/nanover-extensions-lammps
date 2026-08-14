@@ -1,9 +1,7 @@
 import os
 import time
-
 from glob import glob
 from pathlib import Path
-
 from typing import Annotated
 
 import typer
@@ -18,7 +16,7 @@ from nanover_extensions.lammps.simulation import LAMMPSSimulation
 app = typer.Typer()
 
 
-def _list_to_str(s: str, seperator=",") -> list[str]:
+def _list_to_str(s: str, seperator: str = ",") -> list[str]:
     """Takes a given input of `seperator` split list of files converts to a list of str."""
     return s.split(seperator)
 
@@ -26,7 +24,7 @@ def _list_to_str(s: str, seperator=",") -> list[str]:
 @app.command()
 def lammps(
     entries: Annotated[
-        list[str],
+        list[list[str]],
         typer.Option(
             "-e",
             "--entries",
@@ -37,7 +35,9 @@ def lammps(
     record_to_path: Annotated[
         Path | None,
         typer.Option(
-            "-r", "--record-to-path", help="Record trajectory and state to files."
+            "-r",
+            "--record-to-path",
+            help="Record trajectory and state to files.",
         ),
     ] = None,
     omp_num_threads: Annotated[
@@ -49,7 +49,7 @@ def lammps(
         ),
     ] = 4,
     quiet: Annotated[bool, typer.Option(help="Whether to suppress LAMMPS outputs.")] = False,
-):
+) -> None:
     if omp_num_threads is not None:
         os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
 
@@ -76,7 +76,7 @@ def lammps(
                         natoms = int(simulation.lmp.get_natoms())
                         print(
                             f"LAMMPS simulation with {natoms} atoms loaded from {path} "
-                            f"(frame interval: {frame_interval})"
+                            f"(frame interval: {frame_interval})",
                         )
                     except NotImplementedError as e:
                         print(f"LAMMPS simulation not yet implemented: {e}")
@@ -91,8 +91,8 @@ def lammps(
             runner.print_basic_info()
 
         if record_to_path is not None:
-            stem = record_to_path
-            if stem == "":
+            stem = str(record_to_path)
+            if stem in (".", ""):
                 timestamp = time.strftime("%Y-%m-%d-%H%M-%S", time.gmtime())
                 stem = f"omni-recording-{timestamp}"
 

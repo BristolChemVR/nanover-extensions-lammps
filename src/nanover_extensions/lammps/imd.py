@@ -1,16 +1,18 @@
-"""
-Manage NanoVer IMD force injection into a LAMMPS simulation via fix external.
-"""
+"""Manage NanoVer IMD force injection into a LAMMPS simulation via fix external."""
 
+import contextlib
 import ctypes
 import warnings
+from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
-
-from nanover.imd.imd_force import calculate_imd_force, get_sparse_forces
 from nanover.imd import ImdStateWrapper
+from nanover.imd.imd_force import calculate_imd_force, get_sparse_forces
 from nanover.trajectory import FrameData
+
+if TYPE_CHECKING:
+    import lammps
 
 # Conversion factors per LAMMPS unit style.
 # Each entry is (pos_to_nm, force_from_kjmol_per_nm, mass_to_amu):
@@ -20,18 +22,18 @@ from nanover.trajectory import FrameData
 _UNIT_CONVERSIONS: dict[str, tuple[float, float, float]] = {
     # real  : positions Å, forces kcal/(mol·Å), masses g/mol (= amu)
     #   1 kJ/(mol·nm) = 0.1 kJ/(mol·Å) = 0.023901 kcal/(mol·Å)
-    "real":   (0.1,  0.023901,    1.0),
+    "real": (0.1, 0.023901, 1.0),
     # metal : positions Å, forces eV/Å, masses g/mol (= amu)
     #   1 kJ/(mol·nm) = 1/(96.485 * 10) eV/Å ≈ 1.03643e-3 eV/Å
-    "metal":  (0.1,  1.03643e-3,  1.0),
+    "metal": (0.1, 1.03643e-3, 1.0),
     # si    : positions m, forces N (per atom), masses kg
     #   1 kJ/(mol·nm) = 1e3/(6.02214076e23 * 1e-9) N ≈ 1.66054e-12 N
     #   1 kg = 1/(1.66054e-27) amu ≈ 6.02214076e26 amu
-    "si":     (1e9,  1.66054e-12, 6.02214076e26),
+    "si": (1e9, 1.66054e-12, 6.02214076e26),
     # nano  : positions nm (already), forces ag·nm/ns², masses ag
     #   1 kJ/(mol·nm) ≈ 0.069477 ag·nm/ns²
     #   1 ag = 1e-18 g / (1.66054e-24 g/amu) ≈ 6.02214076e5 amu
-    "nano":   (1.0,  0.069477,    6.02214076e5),
+    "nano": (1.0, 0.069477, 6.02214076e5),
 }
 
 
@@ -42,24 +44,27 @@ def get_unit_conversions(lammps_units: str) -> tuple[float, float, float]:
     except KeyError:
         raise ValueError(
             f"Unsupported LAMMPS unit style '{lammps_units}'. "
-            f"Supported styles: {list(_UNIT_CONVERSIONS)}"
+            f"Supported styles: {list(_UNIT_CONVERSIONS)}",
         )
 
 
-def detect_lammps_units(lmp) -> str:
+def detect_lammps_units(lmp: "lammps.lammps") -> str:
     """Detect the LAMMPS unit style, falling back to "real" if detection fails."""
     try:
         units = lmp.extract_global("units")
         if isinstance(units, (bytes, bytearray)):
             units = units.decode()
     except Exception as e:
-        warnings.warn(f"Could not detect LAMMPS unit style, assuming 'real': {e}")
+        warnings.warn(f"Could not detect LAMMPS unit style, assuming 'real': {e}", stacklevel=2)
         return "real"
 
     if isinstance(units, str) and units in _UNIT_CONVERSIONS:
         return units
 
-    warnings.warn(f"Unsupported or undetected LAMMPS unit style {units!r}, assuming 'real'.")
+    warnings.warn(
+        f"Unsupported or undetected LAMMPS unit style {units!r}, assuming 'real'.",
+        stacklevel=2,
+    )
     return "real"
 
 
@@ -68,12 +73,12 @@ class LammpsImdForceManager:
 
     def __init__(
         self,
-        lmp,
+        lmp: "lammps.lammps",
         imd_state: ImdStateWrapper | None,
         id_to_index: dict[int, int],
         pbc_vectors: np.ndarray | None = None,
         lammps_units: str | None = None,
-    ):
+    ) -> None:
         self.lmp = lmp
         self.imd_state = imd_state
         self._id_to_index = id_to_index  # LAMMPS atom ID → NanoVer 0-based index
@@ -101,10 +106,13 @@ class LammpsImdForceManager:
         self.periodic_box_lengths: np.ndarray | None = None
         if pbc_vectors is not None:
             pbc = np.asarray(pbc_vectors)
-            assert np.all(pbc == np.diagflat(np.diag(pbc))), (
-                "The periodic box vectors do not correspond to an orthorhombic cell. "
-                "Only orthorhombic PBC is currently supported for LAMMPS IMD."
-            )
+            if not np.all(pbc == np.diagflat(np.diag(pbc))):
+                warnings.warn(
+                    "The periodic box vectors do not correspond to an orthorhombic cell. "
+                    "Only orthorhombic PBC is currently supported for LAMMPS IMD.",
+                    stacklevel=2,
+                )
+
             self.periodic_box_lengths = np.diag(pbc)
 
         # Register fix external — callback is invoked every timestep inside run
@@ -155,12 +163,18 @@ class LammpsImdForceManager:
 
     def unfix(self) -> None:
         """Remove ``fix imd_nanover`` from LAMMPS.  Call before re-initialising."""
-        try:
+        with contextlib.suppress(Exception):
             self.lmp.command(f"unfix {self.FIX_ID}")
-        except Exception:
-            pass  # LAMMPS may have already removed the fix; safe to ignore
 
-    def _callback(self, lmp, ntimestep, nlocal, tag, x, fexternal) -> None:
+    def _callback(
+        self,
+        lmp: "lammps.lammps",
+        ntimestep: int,
+        nlocal: int,
+        tag: list,
+        x: list,
+        fexternal: np.ndarray,
+    ) -> None:
         """LAMMPS fix-external callback: scatter cached forces into fexternal each timestep."""
         if self._current_lammps_forces is None:
             # zero fexternal even with no interactions — atom migration can regrow it uninitialised
@@ -187,9 +201,14 @@ class LammpsImdForceManager:
                     ctypes.cast(mass_ptr, ctypes.POINTER(ctypes.c_double)),
                     shape=(ntypes + 1,),
                 )
-                return np.array([float(masses_by_type[int(t)]) for t in lmp_types]) * self._mass_to_amu
+                return (
+                    np.array([float(masses_by_type[int(t)]) for t in lmp_types]) * self._mass_to_amu
+                )
         except Exception as e:
-            warnings.warn(f"Could not read per-type masses, trying per-atom rmass: {e}")
+            warnings.warn(
+                f"Could not read per-type masses, trying per-atom rmass: {e}",
+                stacklevel=2,
+            )
 
         # per-atom mass, e.g. sphere/granular atom styles use rmass instead of per-type mass
         try:
@@ -201,10 +220,11 @@ class LammpsImdForceManager:
                 )
                 return rmass.copy() * self._mass_to_amu
         except Exception as e:
-            warnings.warn(f"Could not read per-atom rmass: {e}")
+            warnings.warn(f"Could not read per-atom rmass: {e}", stacklevel=2)
 
         warnings.warn(
             "Could not determine atom masses; using unit masses. "
-            "Mass-weighted IMD interactions will be inaccurate."
+            "Mass-weighted IMD interactions will be inaccurate.",
+            stacklevel=2,
         )
         return np.ones(natoms, dtype=np.float64)

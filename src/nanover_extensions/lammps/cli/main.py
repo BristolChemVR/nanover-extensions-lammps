@@ -7,9 +7,9 @@ app = typer.Typer()
 app.add_typer(lammps_app)
 
 
-def main():
+def main() -> None:
     app()
-    
+
 
 if __name__ == "__main__":
     main()
