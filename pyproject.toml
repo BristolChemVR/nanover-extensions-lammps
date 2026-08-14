@@ -26,11 +26,15 @@ dependencies = [
     "typer",
 ]
 
+
 [dependency-groups]
 dev = [
     "mypy>=1.19.1",
+    "isort>=8.0.1",
+    "black>=26.5.1",
+    "nox>=2026.2.9",
     "pytest>=9.0.2",
-    "coverage>=7.8.2",
+    "coverage>=7.15.2",
     "ruff>=0.15.1",
     "taskipy>=1.14.1",
     "portray>=1.8.0",
@@ -38,6 +42,7 @@ dev = [
     "setuptools>=80.9.0",
     "pre-commit>=4.2.0",
 ]
+
 
 [project.scripts]
 next-lammps = "nanover_extensions.lammps.cli.main:main"
@@ -56,9 +61,9 @@ build-backend = "uv_build"
 module-name = ["nanover_extensions.lammps"]
 
 [tool.taskipy.tasks]
-format = { cmd = "ruff format ./src/", help = "Format code using ruff" }
-lint = { cmd = "ruff check --fix ./src/", help = "Lint code using ruff" }
-type = { cmd = "mypy --strict ./src/", help = "Typecheck code using mypy" }
+format = { cmd = "isort ./src --profile \"black\" --skip \"__init__.py\" --filter-files && black ./src --target-version py312", help = "Format code using isort and black" }
+lint = { cmd = "ruff check --config pyproject.toml --fix", help = "Lint code using ruff" }
+type = { cmd = "mypy --config-file pyproject.toml", help = "Typecheck code using mypy" }
 docs = { cmd = "portray in_browser", help = "Serve documentation in browser" }
 serve = { cmd = "portray server", help = "Serve documentation" }
 html = { cmd = "portray as_html", help = "Build HTML documentation" }
