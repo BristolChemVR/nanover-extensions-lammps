@@ -12,6 +12,7 @@ jobs:
         # shell: micromamba-shell {0}
         shell: bash -l {0}
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
 
