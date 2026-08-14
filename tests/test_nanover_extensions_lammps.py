@@ -2,8 +2,7 @@ import numpy as np
 import pytest
 
 from nanover_extensions.lammps.converter import lammps_to_frame_data
-from nanover_extensions.lammps.imd import (detect_lammps_units,
-                                           get_unit_conversions)
+from nanover_extensions.lammps.imd import detect_lammps_units, get_unit_conversions
 
 
 def test_real_units_conversions() -> None:

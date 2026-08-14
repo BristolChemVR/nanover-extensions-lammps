@@ -30,12 +30,10 @@ dependencies = [
 [dependency-groups]
 dev = [
     "mypy>=1.19.1",
-    "isort>=8.0.1",
-    "black>=26.5.1",
     "nox>=2026.2.9",
     "pytest>=9.0.2",
     "coverage>=7.15.2",
-    "ruff>=0.15.1",
+    "ruff>=0.16.2",
     "taskipy>=1.14.1",
     "portray>=1.8.0",
     "legacy-cgi>=2.6.3",
@@ -61,7 +59,7 @@ build-backend = "uv_build"
 module-name = ["nanover_extensions.lammps"]
 
 [tool.taskipy.tasks]
-format = { cmd = "isort ./src --profile \"black\" --skip \"__init__.py\" --filter-files && black ./src --target-version py312", help = "Format code using isort and black" }
+format = { cmd = "ruff format ./src/", help = "Format code using ruff" }
 lint = { cmd = "ruff check --config pyproject.toml --fix", help = "Lint code using ruff" }
 type = { cmd = "mypy --config-file pyproject.toml", help = "Typecheck code using mypy" }
 docs = { cmd = "portray in_browser", help = "Serve documentation in browser" }
@@ -85,7 +83,6 @@ pydocstyle.convention = "google"
 fixable = ["ALL"]
 select = ["ALL"]
 ignore = [
-    "I", # Do not isort
     "FA102", # Flake8-future-annotations
     "F401", # Disable fix for unused imports
     "B904", # Allow raising exceptions without from e

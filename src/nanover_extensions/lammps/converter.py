@@ -18,9 +18,7 @@ def lammps_to_frame_data(
         data.particle_positions = np.asarray(positions_nm, dtype=np.float32)
 
     if box_bounds_nm is not None:
-        xlo, xhi, ylo, yhi, zlo, zhi = np.asarray(box_bounds_nm, dtype=float).flatten()[
-            :6
-        ]
+        xlo, xhi, ylo, yhi, zlo, zhi = np.asarray(box_bounds_nm, dtype=float).flatten()[:6]
         data.box_vectors = np.array(
             [[xhi - xlo, 0.0, 0.0], [0.0, yhi - ylo, 0.0], [0.0, 0.0, zhi - zlo]],
             dtype=np.float32,
