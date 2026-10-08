@@ -1,0 +1,77 @@
+# =============================================================================
+#  A_inputEq_VR_Input.in  --  interactive VR (iMD) driver script
+#
+#  Resumes the shrinking-sphere compaction from the checkpoint written by
+#  A_inputE1_VR_Prod.in and hands the dynamics to NanoVer:
+#
+#      sim = LAMMPSSimulation("A_inputEq_VR_Input.in", frame_interval_steps=5)
+#
+#  Two things here are deliberate and load-bearing:
+#
+#  1. There is NO `run` command.  LAMMPSSimulation executes this script once,
+#     synchronously, at construction; anything run here would have finished
+#     before VR ever saw it.  NanoVer's stepping loop drives the dynamics.
+#  2. The NVT thermostat is left fixed at the end.  If it were unfixed, no
+#     integrator would remain and the atoms would simply not move.
+# =============================================================================
+
+units          real
+boundary       p p p
+atom_style     full
+
+variable       cutoff        equal 10
+variable       charge_cutoff equal 10
+
+# Styles must be declared BEFORE read_data: the checkpoint is a write_data
+# file, which embeds its own Coeffs sections and needs the styles to already
+# exist.  (This is why there is no `include multiChains.params` here -- the
+# coefficients travel inside the checkpoint.)
+pair_style     lj/class2/coul/long ${cutoff} ${charge_cutoff}
+bond_style     class2
+angle_style    class2
+dihedral_style class2
+improper_style class2
+pair_modify    mix sixthpower tail yes
+special_bonds  lj/coul 0 0 1
+
+read_data      "A_VR_3_system_step5000.data"
+kspace_style   pppm 1e-04
+
+# Restore the clock.  RiMax/RoMax below are functions of `time`, so without
+# this the spheres would snap back to their t=0 radii (1 A and 150 A) and the
+# pore built during the production run would collapse on the first step.
+# Must come before any fix or dump is defined.
+#
+# This number is coupled to nVRstart in A_inputE1_VR_Prod.in: if you move the
+# hand-off point, change it here (and in the read_data filename above) to match.
+reset_timestep 5000 time 5000.0
+
+variable    L equal "lx"
+variable    X0 equal "xlo"
+variable    X equal ${X0}+${L}/2
+variable    rate equal 1/100 #A/fs
+variable    RiI equal 1.0 #A
+variable    RiMax equal "(time<10000)*(v_RiI+0.24*v_rate*time)+(time>=10000)*25.0" #RiF = 25, clamped so the ramp holds once reached
+
+variable    RoI equal 150 #A
+variable    RoMax equal "(time<10000)*(v_RoI-1.1*v_rate*time)+(time>=10000)*40.0" #RoF = 40, clamped so the ramp holds once reached
+
+# Confining spheres: a growing inner bubble (the pore nucleus) and a shrinking
+# outer shell (compaction).  These use fix indent rather than fix wall/region:
+# wall/region aborts LAMMPS outright the instant any atom lands on the wrong
+# side of the surface, which an interactive VR pull will eventually cause.
+# fix indent applies a bounded harmonic push instead, so a yanked atom is
+# simply shoved back and the session carries on.  K=100 reproduces the lj93
+# pore geometry to ~0.1 A.
+# NB: fix indent's `side` keyword has the inverse sense of region's.
+variable    K equal 100.0 #kcal/mol/A^2
+fix wallPoreIn  all indent ${K} sphere v_X v_X v_X v_RiMax units box
+fix wallPoreOut all indent ${K} sphere v_X v_X v_X v_RoMax side in units box
+
+thermo_style    custom step time v_X v_RiMax v_RoMax temp pe ke etotal press vol density
+thermo          50
+thermo_modify   norm yes
+
+fix fxnvt all nvt temp 600.0 600.0 100.0
+
+timestep        1.0

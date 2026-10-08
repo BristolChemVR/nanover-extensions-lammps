@@ -1,0 +1,157 @@
+# =============================================================================
+#  A_inputE1_VR_Prod.in  --  offline production run for the NanoVer VR demo
+#
+#  Takes the segmented-polyurethane melt from the raw EMC-built system
+#  (stage 0) through minimisation (stage 1) and NVT reorientation (stage 2),
+#  then 5000 steps into the shrinking-sphere compaction (stage 3), and writes
+#  a checkpoint.
+#
+#  That checkpoint is the input to A_inputEq_VR_Input.in, which hands the
+#  simulation to NanoVer for interactive VR.  Step 5000 is the hand-off point
+#  because the outer confining sphere first touches the melt at ~step 5145:
+#  a VR user therefore arrives just as the visible compaction starts, instead
+#  of watching an empty wall close on nothing for the first 2.3 minutes.
+#
+#  Run this traditionally, e.g.
+#      mpirun -np 8 lmp -in A_inputE1_VR_Prod.in -log none
+#  The only file it writes is the checkpoint, A_VR_3_system_step5000.data: no
+#  trajectories, energy log or intermediate data files.  Pass -log none (as
+#  above) to skip log.lammps as well; thermo output still goes to the screen.
+# =============================================================================
+
+units          real
+boundary       p p p
+atom_style     full
+
+# ---- run lengths -------------------------------------------------------
+# These are the original protocol's values, recovered from A_inputEq.in.
+#
+# Running stage 2 longer is tempting -- the melt is built very loose
+# (~0.02 g/cm3) and 10 ps leaves it only partly relaxed -- but do not.  At
+# 600 K in a mostly empty box the droplet evaporates: at 100 ps roughly 8% of
+# atoms have drifted out to 80-120 A as a dilute vapour halo.  Stage 3's outer
+# sphere then has to sweep through that halo, and because fix indent's force
+# grows as K*(RoMax-r)^2, atoms it cannot herd fast enough get hit with
+# thousands of kcal/mol/A, are flung into the melt, and snap bonds around
+# step 5250.  10 ps of reorientation does not produce the halo.
+#
+# If you do want longer equilibration, tighten Rbox below to just outside the
+# droplet (~100 A) so the vapour stays compact, rather than raising these.
+variable       nLangevin equal 5000     # steps, Langevin thermalisation  (5 ps)
+variable       nReorient equal 10000    # steps, NVT chain reorientation (10 ps)
+variable       nVRstart  equal 5000     # steps into stage 3 -> VR hand-off
+
+# -----------------Potential-----------------
+
+variable       cutoff        equal 10
+variable       charge_cutoff equal 10
+
+pair_style     lj/class2/coul/long ${cutoff} ${charge_cutoff}
+special_bonds  lj/coul 0 0 1
+
+read_data      "multiChainsNew.data"
+include        "multiChains.params"
+kspace_style   pppm 1e-04
+
+thermo_style   custom step time temp pe etotal epair ebond eangle edihed press vol density
+thermo         50
+thermo_modify  norm yes
+
+# Sphere centre, shared by the stage-2 container and the stage-3 pore walls.
+variable       L  equal "lx"
+variable       X0 equal "xlo"
+variable       X  equal ${X0}+${L}/2
+
+# Container that holds the loosely-built system together during stages 1-2.
+#
+# The original protocol used a cubic wall matching the periodic box.  That is
+# unsafe once stage 2 actually runs: the box corners sit 173 A from the centre,
+# but stage 3's outer sphere starts at RoI = 150 A.  At 600 K a few chains
+# evaporate off the droplet and drift into those corners, which is legal under
+# a cubic wall but leaves them OUTSIDE the sphere when stage 3 begins -- where
+# fix indent hits them with K*(150-173)^2, of order 4000 kcal/mol/A, and rips
+# their bonds on the first step.
+#
+# A spherical container, comfortably inside RoI, makes stage 3's precondition
+# a guarantee rather than a hope.  At 600 K an atom penetrates this wall by
+# only ~0.3 A, so nothing reaches 150 A.  It also matches the spherical
+# geometry the protocol switches to immediately afterwards.
+variable       Rbox equal 145.0 #A, must stay < RoI below
+fix wallBox all indent 100.0 sphere v_X v_X v_X ${Rbox} side in units box
+
+# -- Stage 1: initial minimisation --------------------------------------
+# No dump or checkpoint here: minimisation converges in ~470 iterations, about
+# 15 s on 8 ranks, so there is nothing worth saving and nothing worth watching.
+# (It stops on "linesearch alpha is zero" rather than on the tolerances below,
+# which is normal -- MD takes over immediately afterwards.)
+
+minimize 1.0e-7 1.0e-9 1000000 4000000
+
+# -- Stage 2: reorienting the molecules (NVT) ---------------------------
+
+reset_timestep 0
+timestep       1.0
+
+thermo         500
+
+# Give each atom a random initial velocity consistent with a system at 600 K.
+velocity all create 600.0 12345
+
+# Zero net linear and angular momentum periodically.  fix langevin's random
+# forces impart net momentum (measured: ~1.5e-4 A/fs after 10000 steps), and
+# Nose-Hoover then conserves it -- which sails the whole droplet ~15-19 A off
+# the box centre over stage 2 and leaves it lopsided inside the confining
+# spheres, which are pinned to the centre.  EMC's own multiChains.in does this
+# (line 56); A_inputEq.in dropped it, and it went unnoticed because every run
+# in that script was `run 0`.
+fix mom all momentum 100 linear 1 1 1 angular
+
+fix fxlan all langevin 600.0 600.0 120 48279
+fix fxnve all nve
+
+run            ${nLangevin}
+
+unfix fxlan
+unfix fxnve
+
+# Continue at high temperature under Nose-Hoover.
+fix fxnvt all nvt temp 600.0 600.0 100.0
+
+run            ${nReorient}
+
+unfix fxnvt
+unfix mom
+unfix wallBox
+
+# -- Stage 3: create spheres with NVT, up to the VR hand-off ------------
+
+reset_timestep 0
+
+# L, X0 and X are defined once near the top of this script.
+variable    rate equal 1/100 #A/fs
+variable    RiI equal 1.0 #A
+variable    RiMax equal "(time<10000)*(v_RiI+0.24*v_rate*time)+(time>=10000)*25.0" #RiF = 25, clamped so the ramp holds once reached
+
+variable    RoI equal 150 #A
+variable    RoMax equal "(time<10000)*(v_RoI-1.1*v_rate*time)+(time>=10000)*40.0" #RoF = 40, clamped so the ramp holds once reached
+
+# Confining spheres: a growing inner bubble (the pore nucleus) and a shrinking
+# outer shell (compaction).  fix indent rather than fix wall/region, so that
+# these are identical to the walls in A_inputEq_VR_Input.in -- the checkpoint
+# has to resume under exactly the same potential it was generated with.
+variable    K equal 100.0 #kcal/mol/A^2
+fix wallPoreIn  all indent ${K} sphere v_X v_X v_X v_RiMax units box
+fix wallPoreOut all indent ${K} sphere v_X v_X v_X v_RoMax side in units box
+
+thermo_style   custom step time v_X v_RiMax v_RoMax temp pe ke etotal press vol density
+thermo         50
+thermo_modify  norm yes
+
+fix fxnvt all nvt temp 600.0 600.0 100.0
+
+timestep       1.0
+run            ${nVRstart}
+
+# Hand-off checkpoint.  A_inputEq_VR_Input.in reads this and restores the
+# clock to nVRstart fs so the sphere radii resume where they left off.
+write_data     A_VR_3_system_step5000.data
