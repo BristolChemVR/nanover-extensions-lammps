@@ -1,0 +1,41 @@
+LAMMPS (22 Jul 2025 - Update 4)
+OMP_NUM_THREADS environment is not set. Defaulting to 1 thread.
+  using 1 OpenMP thread(s) per MPI task
+units           real
+atom_style      bond
+boundary        p p p
+
+region          box block 0 10 0 10 0 10
+create_box      1 box bond/types 1 extra/bond/per/atom 1 extra/special/per/atom 2
+Created orthogonal box = (0 0 0) to (10 10 10)
+  1 by 1 by 1 MPI processor grid
+create_atoms    1 single 4.5 5.0 5.0
+Created 1 atoms
+  using lattice units in orthogonal box = (0 0 0) to (10 10 10)
+  create_atoms CPU = 0.000 seconds
+create_atoms    1 single 5.5 5.0 5.0
+Created 1 atoms
+  using lattice units in orthogonal box = (0 0 0) to (10 10 10)
+  create_atoms CPU = 0.001 seconds
+mass            1 1.008
+
+pair_style      zero 5.0
+pair_coeff      * *
+bond_style      harmonic
+bond_coeff      1 100.0 1.0
+create_bonds    single/bond 1 1 2
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0
+  special bond factors coul:  0        0        0
+     1 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     5 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+
+# Give the atoms something to do, so two frames are never identical.
+velocity        all create 300.0 4928459 dist gaussian
+fix             nve all nve
+timestep        0.5
+fix imd_nanover all external pf/callback 1 1
+Total wall time: 0:00:00

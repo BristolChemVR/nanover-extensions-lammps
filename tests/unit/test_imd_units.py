@@ -33,12 +33,20 @@ def test_detects_metal_units() -> None:
     assert detect_lammps_units(sim) == "metal"
 
 
-def test_unknown_units_fall_back_to_real_with_warning() -> None:
+def test_unknown_units_are_rejected_not_guessed() -> None:
     sim = FakeLammps("apples")
-    with pytest.warns(UserWarning, match="Unsupported or undetected"):
-        assert detect_lammps_units(sim) == "real"
+    with pytest.raises(ValueError, match="Unsupported LAMMPS unit style 'apples'"):
+        detect_lammps_units(sim)
 
 
 def test_undetectable_units_fall_back_to_real_with_warning() -> None:
     with pytest.warns(UserWarning, match="Could not detect"):
         assert detect_lammps_units(FakeLammpsNoGlobals()) == "real"
+
+
+def test_lj_units_are_rejected_rather_than_treated_as_real() -> None:
+    # `units lj` is dimensionless: there is no physical length or force to convert from, and
+    # falling back to "real" would scale every injected force by a made-up factor.
+    sim = FakeLammps("lj")
+    with pytest.raises(ValueError, match="'lj'"):
+        detect_lammps_units(sim)

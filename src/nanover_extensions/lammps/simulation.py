@@ -64,7 +64,7 @@ class LAMMPSSimulation:
 
         cmdargs = ["-screen", "none"] if quiet else []
         self.lmp = lammps.lammps(cmdargs=cmdargs)
-        self.lmp.file(self.input_script)
+        self.lmp.file(str(self.input_script))
 
         # Detect or accept LAMMPS unit style (needed for IMD force conversion)
         self.lammps_units: str = lammps_units or detect_lammps_units(self.lmp)
