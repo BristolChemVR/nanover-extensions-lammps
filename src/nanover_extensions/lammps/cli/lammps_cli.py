@@ -71,6 +71,7 @@ def lammps(
                             input_script=path,
                             frame_interval_steps=frame_interval,
                             quiet=quiet,
+                            omp_threads=omp_num_threads,
                         )
                         runner.add_simulation(simulation)
                         natoms = int(simulation.lmp.get_natoms())
