@@ -53,6 +53,7 @@ class LAMMPSSimulation:
         include_forces: bool = False,
         generate_bonds: bool = True,
         quiet: bool = False,
+        omp_threads: int | None = None,
     ) -> None:
         self.input_script = input_script
         self.include_velocities = include_velocities
@@ -63,6 +64,8 @@ class LAMMPSSimulation:
         self.name = Path(input_script).stem
 
         cmdargs = ["-screen", "none"] if quiet else []
+        if omp_threads is not None:
+            cmdargs.extend(["-sf", "omp", "-pk", "omp", str(omp_threads)])
         self.lmp = lammps.lammps(cmdargs=cmdargs)
         self.lmp.file(str(self.input_script))
 
