@@ -49,7 +49,11 @@ def get_unit_conversions(lammps_units: str) -> tuple[float, float, float]:
 
 
 def detect_lammps_units(lmp: "lammps.lammps") -> str:
-    """Detect the LAMMPS unit style, falling back to "real" if detection fails."""
+    """Detect the LAMMPS unit style, falling back to "real" if detection fails.
+
+    :raises ValueError: if the style is detected but has no known conversion (e.g. ``lj``).
+        Guessing would silently scale every injected force by the wrong factor.
+    """
     try:
         units = lmp.extract_global("units")
         if isinstance(units, (bytes, bytearray)):
@@ -61,11 +65,9 @@ def detect_lammps_units(lmp: "lammps.lammps") -> str:
     if isinstance(units, str) and units in _UNIT_CONVERSIONS:
         return units
 
-    warnings.warn(
-        f"Unsupported or undetected LAMMPS unit style {units!r}, assuming 'real'.",
-        stacklevel=2,
+    raise ValueError(
+        f"Unsupported LAMMPS unit style {units!r}. Supported styles: {list(_UNIT_CONVERSIONS)}",
     )
-    return "real"
 
 
 class LammpsImdForceManager:

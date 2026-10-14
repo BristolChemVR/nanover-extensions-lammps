@@ -118,7 +118,15 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F401", "F403"]
-"tests/**" = ["S101", "D1", "ANN", "PLR2004", "INP001"]
+"tests/**" = [
+    "S101", # assert is the point of a test
+    "D1", # tests document themselves through their names
+    "ANN",
+    "PLR2004",
+    "INP001",
+    "PLC0415",
+    "SLF001", # tests exercise private helpers directly
+]
 "src/nanover_extensions/lammps/cli/lammps_cli.py" = [ "FBT002", "PTH207"]
 
 [tool.ruff.lint.mccabe]

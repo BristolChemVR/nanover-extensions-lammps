@@ -64,7 +64,7 @@ class LAMMPSSimulation:
 
         cmdargs = ["-screen", "none"] if quiet else []
         self.lmp = lammps.lammps(cmdargs=cmdargs)
-        self.lmp.file(self.input_script)
+        self.lmp.file(str(self.input_script))
 
         # Detect or accept LAMMPS unit style (needed for IMD force conversion)
         self.lammps_units: str = lammps_units or detect_lammps_units(self.lmp)
@@ -203,7 +203,7 @@ class LAMMPSSimulation:
         positions, box_bounds = self._get_positions_and_box()
         xlo, xhi, ylo, yhi, zlo, zhi = box_bounds
 
-        self._bond_pairs, self._bond_orders = self._filter_pbc_bonds(
+        b_pairs, b_orders = self._filter_pbc_bonds(
             positions,
             box_bounds,
             self._bond_pairs,
@@ -247,8 +247,8 @@ class LAMMPSSimulation:
                 ),
                 particle_count=natoms,
                 particle_elements=self._particle_elements,
-                bond_pairs=self._bond_pairs,
-                bond_orders=self._bond_orders,
+                bond_pairs=b_pairs,
+                bond_orders=b_orders,
                 include_positions=True,
             )
             self._app_server.frame_publisher.send_clear()
@@ -369,7 +369,6 @@ class LAMMPSSimulation:
         if self._id_to_index is None:
             self._id_to_index = self._build_id_to_index_map()
 
-        bond_types = bonds[:, 0].astype(np.int32)
         id1 = bonds[:, 1]
         id2 = bonds[:, 2]
 
@@ -380,7 +379,9 @@ class LAMMPSSimulation:
         j = np.maximum(idx1, idx2)
         pairs = np.stack([i, j], axis=1)
 
-        return bond_types, pairs
+        orders = np.ones(len(pairs), dtype=np.int32)  # LAMMPS doesn't store bond order by default
+
+        return orders, pairs
 
     @staticmethod
     def _generate_bonds_from_positions(
