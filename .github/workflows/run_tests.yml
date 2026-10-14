@@ -29,6 +29,7 @@ jobs:
           create-args: >-
             python=${{ matrix.python-version }}
             nanover-server
+            lammps
           init-shell: >-
             bash
 
