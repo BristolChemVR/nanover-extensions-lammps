@@ -8,7 +8,7 @@ import typer
 
 os.environ["OMP_NUM_THREADS"] = "4"
 
-from nanover.omni import OmniRunner
+from nanover.app.omni import OmniRunner
 from nanover.websocket.record import record_from_runner
 
 from nanover_extensions.lammps.simulation import LAMMPSSimulation
@@ -24,12 +24,11 @@ def _list_to_str(s: str, seperator: str = ",") -> list[str]:
 @app.command()
 def lammps(
     entries: Annotated[
-        list[list[str]],
+        list[str],
         typer.Option(
             "-e",
             "--entries",
             help="Simulation(s) to run via LAMMPS (data file format)",
-            parser=_list_to_str,
         ),
     ],
     record_to_path: Annotated[
@@ -54,7 +53,8 @@ def lammps(
         os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
 
     with OmniRunner.with_basic_server() as runner:
-        for entry in entries:
+        for raw_entry in entries:
+            entry = _list_to_str(raw_entry)
             # Entry is a list of tokens from nargs="+".
             # Optional trailing integer is the frame interval: --lammps sim.in 20
             *path_tokens, last = entry
