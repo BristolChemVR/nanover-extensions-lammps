@@ -2,6 +2,9 @@ name: "Run tasks"
 on:
   pull_request:
     types: [edited, opened, synchronize, reopened]
+  schedule:
+    - cron: "0 0 * * 1" # every Monday at midnight UTC
+  workflow_dispatch:
 
 jobs:
   test:
