@@ -20,7 +20,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "nanover-server",
+    "nanover-server>=0.1.2958",
     "lammps",
     "numpy",
     "typer",
